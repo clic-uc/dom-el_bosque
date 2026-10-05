@@ -142,3 +142,5 @@ Registro de toda desviación o precisión respecto de `PROMPT.md`. Formato: fech
 **2026-10-05 — `STORAGE_DIR` con valor por defecto en `storage.ts`.** Durante `next build` se omite la validación de env (`SKIP_ENV_VALIDATION`) y el módulo se evalúa al recolectar rutas; sin el valor por defecto el build en Docker fallaba.
 
 **2026-10-05 — Limpieza de knip.** Se eliminaron 10 componentes shadcn sin uso (y `cmdk`, `date-fns`, `react-day-picker`). Los contratos compartidos (`src/shared/**`, servicios, `http.ts`, `lib/*`) se declaran como *entries* de knip: sus exports son API interna pública aunque hoy no todos tengan consumidor; `ignoreExportsUsedInFile` evita falsos positivos.
+
+**2026-10-05 — `errors.ts` sin dependencia de Next.** `toApiError` (usa `NextResponse`) se movió a `http.ts`; `errors.ts` queda puro para que los bundles del worker y de los scripts CLI no requieran `next/server` (la imagen standalone no lo expone a `scripts/*.js`). Los handlers de importación se importan de forma estática en `jobs/handlers.ts`: el `import()` dinámico con `catch` ocultaba el fallo.

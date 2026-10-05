@@ -1,8 +1,57 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import type { ZodType } from 'zod';
+import { ZodError, type ZodType } from 'zod';
 import type { Role } from '@/shared/permissions';
 import { getActor, type Actor, type GetActorOptions } from './auth/session';
-import { ForbiddenError, toApiError, zodToValidationError } from './errors';
+import {
+  AppError,
+  ForbiddenError,
+  statusFromText,
+  zodToValidationError,
+  type ApiErrorBody,
+  type ApiErrorCode,
+} from './errors';
+import { logger } from './logger';
+
+/** Único punto de mapeo error → respuesta HTTP (§3.2 punto 13). */
+export function toApiError(err: unknown): NextResponse<ApiErrorBody> {
+  if (err instanceof AppError) {
+    return NextResponse.json(err.toBody(), { status: err.status });
+  }
+  if (err instanceof ZodError) {
+    const v = zodToValidationError(err);
+    return NextResponse.json(v.toBody(), { status: v.status });
+  }
+  // Errores de Better Auth (APIError) traen `status` y `body.message`
+  if (typeof err === 'object' && err !== null && 'status' in err && 'body' in err) {
+    const e = err as { status: string | number; body?: { message?: string; code?: string } };
+    const status = typeof e.status === 'number' ? e.status : statusFromText(String(e.status));
+    const code: ApiErrorCode =
+      status === 401
+        ? 'UNAUTHORIZED'
+        : status === 403
+          ? 'FORBIDDEN'
+          : status === 404
+            ? 'NOT_FOUND'
+            : status === 409
+              ? 'CONFLICT'
+              : status === 429
+                ? 'RATE_LIMITED'
+                : status >= 500
+                  ? 'INTERNAL'
+                  : 'VALIDATION';
+    return NextResponse.json(
+      { error: { code, message: e.body?.message ?? 'Error de autenticación', details: e.body?.code } },
+      { status },
+    );
+  }
+  logger.error({ err }, 'Error no controlado');
+  return NextResponse.json(
+    {
+      error: { code: 'INTERNAL', message: 'Ocurrió un error inesperado. Intenta de nuevo en unos minutos.' },
+    },
+    { status: 500 },
+  );
+}
 
 /**
  * Helpers para Route Handlers (§7): parsear con Zod → llamar al servicio → serializar.

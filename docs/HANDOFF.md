@@ -22,13 +22,13 @@
 | 7 Importación en dos fases | ✅ (33 tests; 10k filas: análisis 1,7 s, confirmación 2,9 s; smoke real con worker) |
 | 8–9 Administración, auditoría, polígonos, adjuntos, mapas de calor | ✅ (16 tests de servicio + 7 UI) |
 | 10 Manual | ✅ (24 páginas MDX; 3 redactadas completas, 21 en borrador con esquema) |
-| 11 Producción | ✅ Dockerfile, compose prod + Caddy, CI, backups, DEPLOY/API.md, e2e (17 pasan, 1 fixme). Ver pendientes. |
+| 11 Producción | ✅ Dockerfile, compose prod + Caddy, CI, backups, DEPLOY/API.md, e2e (17 pasan, 1 fixme); pila completa verificada en local con smoke e importación. |
 
 Totales: 250 tests de Vitest en verde (31 archivos), 17 e2e, typecheck/lint/knip limpios, `pnpm build` OK.
 
 ## Pendientes conocidos
 
-- [ ] Smoke de la pila de producción completa (`docker compose --env-file .env.production -f docker-compose.prod.yml up -d` con `SITE_ADDRESS=localhost` + `scripts/smoke.sh`). El build de la imagen se validó tras corregir `storage.ts`; el `up` completo no se ejecutó en esta sesión.
+- [x] Smoke de la pila de producción completa: `docker compose --env-file .env.production -f docker-compose.prod.yml up -d` con `SITE_ADDRESS=localhost`, seeds dentro del contenedor, `scripts/smoke.sh https://localhost` y una importación procesada por el worker del contenedor (2026-10-05).
 - [ ] e2e marcado `fixme`: "respeta ?next= tras ingresar" (el arreglo en `SignInForm` ya está; quitar el `test.fixme` y verificar).
 - [ ] Índice trigram opcional sobre `attributes::text` si la búsqueda libre con 40k registros (≈0,7 s) resulta lenta en uso real (§7.3).
 - [ ] Redacción final de las 21 páginas del manual en borrador (requiere validar ejemplos con la DOM).
