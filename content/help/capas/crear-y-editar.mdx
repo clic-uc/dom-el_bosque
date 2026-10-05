@@ -1,0 +1,19 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = { title: 'Crear y editar capas', section: 'capas', order: 1, draft: true };
+
+Una capa agrupa registros del mismo tipo, por ejemplo todos los permisos de Obras Menores. Solo los
+administradores crean y modifican capas. Esta página explica qué se define al crear una y qué consecuencias
+tiene eliminarla.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- Los datos básicos de una capa: **departamento**, **nombre**, **ícono** y **color** con que se ve en el mapa.
+- Qué significa la opción **"Incluye Rol SII"** y cuándo conviene activarla (casi siempre que los registros
+  correspondan a una propiedad).
+- Cómo agregar y ordenar los campos (columnas) de la capa; el detalle está en
+  [Campos de una capa](/help/capas/campos).
+- Eliminar una capa: qué se borra junto con ella (todos sus registros, comentarios y adjuntos) y por qué la
+  plataforma pide confirmar escribiendo el nombre.

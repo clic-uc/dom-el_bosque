@@ -1,0 +1,22 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = {
+  title: 'Dirección y valor para mapas de calor',
+  section: 'capas',
+  order: 5,
+  draft: true,
+};
+
+Al configurar una capa, un administrador puede marcar cuál de sus campos es la dirección y cuál es el valor
+numérico. Ninguno es obligatorio, pero ambos activan funciones útiles: ubicar registros automáticamente y
+dibujar mapas de calor por monto.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- Para qué sirve marcar el **campo de dirección**: permite ubicar en el mapa registros que no tienen rol ni
+  coordenadas, buscando la dirección en el padrón o en el mapa base.
+- Para qué sirve el **valor numérico**: permite incluir la capa en los
+  [mapas de calor por valor](/help/mapa/mapas-de-calor), sumando ese campo por zona.
+- Por qué solo puede haber **un** campo de valor por capa.

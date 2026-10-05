@@ -1,0 +1,122 @@
+# Producción (§12.2): db (PostGIS) + app (Next standalone) + worker (pg-boss) + caddy (TLS automático).
+#
+#   cp .env.production.example .env.production   # y completar
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#
+# `--env-file .env.production` hace que NEXT_PUBLIC_* y SITE_ADDRESS estén disponibles para la
+# interpolación de este archivo (build args de la imagen y dirección del Caddyfile). Sin esa opción,
+# compose interpola con el `.env` del directorio (si existe) o con los valores por defecto de abajo.
+# El nombre de proyecto fijo (`sigdom`) hace predecibles los nombres de volúmenes: sigdom_db_data,
+# sigdom_app_storage, etc. (los usan scripts/backup-db.sh y restore-db.sh).
+
+name: sigdom
+
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    restart: unless-stopped
+    # POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD salen de .env.production (deben calzar con DATABASE_URL).
+    env_file: .env.production
+    # Sin `ports`: la base solo es accesible desde la red interna de compose.
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  app:
+    build:
+      context: .
+      target: runner
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://sigdomelbosque.cl}
+        NEXT_PUBLIC_MAP_STYLE_URL: ${NEXT_PUBLIC_MAP_STYLE_URL:-https://tiles.openfreemap.org/styles/liberty}
+    image: sigdom-app:latest
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      STORAGE_DIR: /data/storage
+      PORT: '3000'
+      HOSTNAME: 0.0.0.0
+    expose:
+      - '3000'
+    volumes:
+      - app_storage:/data/storage
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+    logging: *logging
+
+  worker:
+    image: sigdom-app:latest
+    # Misma imagen que `app`; no se vuelve a construir.
+    pull_policy: never
+    restart: unless-stopped
+    command: ['node', 'scripts/worker.js']
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      STORAGE_DIR: /data/storage
+      SIGDOM_PROCESS: worker
+    volumes:
+      - app_storage:/data/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        # La app aplica las migraciones en su entrypoint; el worker arranca cuando ya respondió /api/health.
+        condition: service_healthy
+    # El HEALTHCHECK de la imagen apunta a /api/health; el worker no expone HTTP.
+    healthcheck:
+      disable: true
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+    logging: *logging
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      # Dominio que atiende Caddy (certificado Let's Encrypt automático). Usa `localhost` para pruebas locales.
+      SITE_ADDRESS: ${SITE_ADDRESS:-sigdomelbosque.cl}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    logging: *logging
+
+volumes:
+  db_data:
+  app_storage:
+  caddy_data:
+  caddy_config:

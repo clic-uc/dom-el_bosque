@@ -1,0 +1,21 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = { title: 'Preparar el archivo', section: 'importacion', order: 1, draft: true };
+
+Antes de importar una planilla conviene revisarla un momento: que tenga una fila de encabezados, que los
+roles y las fechas estén en un formato reconocible y que no falten las columnas obligatorias. Así la revisión
+posterior es mucho más corta.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- Formatos aceptados: **CSV** o **Excel** (.xlsx).
+- Que debe haber **una fila de encabezados** con el nombre de cada columna, y cómo indicar cuál es si la
+  planilla tiene títulos arriba.
+- Cómo elegir la **hoja** cuando el archivo Excel tiene varias.
+- Formatos que la plataforma entiende para **roles** (con o sin ceros, con guion o barra), **fechas**
+  (dd-mm-aaaa o dd/mm/aaaa), **números** (con coma o punto) y **coordenadas**.
+- El **tamaño máximo** del archivo.
+- Qué columnas son **obligatorias** según la capa: el rol o la dirección en capas con rol, y los campos
+  marcados como requeridos.

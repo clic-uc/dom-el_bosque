@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
-import { EmptyState } from '@/components/shared/states';
+import { AuditAdmin } from '@/features/admin/AuditAdmin';
 
 export const metadata: Metadata = { title: 'Auditoría' };
 
-/** Placeholder: se implementa en la fase 8 (`features/admin/AuditLogList`). */
+/** Auditoría (§10.3): logs e importaciones. El guard admin está en el layout. */
 export default function AdminAuditPage() {
-  return <EmptyState title="Auditoría" description="Esta sección se está preparando." />;
+  return <AuditAdmin />;
 }

@@ -11,6 +11,7 @@
     "dev": "next dev",
     "worker": "tsx watch scripts/worker.ts",
     "build": "next build",
+    "build:scripts": "node scripts/build-scripts.mjs",
     "start": "next start",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -28,6 +29,7 @@
     "geo:convert": "tsx scripts/convert-legacy-geojson.ts",
     "geo:import": "tsx scripts/geo-import.ts",
     "auth:create-admin": "tsx scripts/create-admin.ts",
+    "e2e:seed": "tsx scripts/e2e-seed-users.ts",
     "knip": "knip"
   },
   "dependencies": {

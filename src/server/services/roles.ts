@@ -4,7 +4,7 @@ import Papa from 'papaparse';
 import type { DbOrTx } from '@/db/client';
 import { layers, records, roleOperationRoles, roleOperations, roles } from '@/db/schema';
 import { departments } from '@/shared/constants';
-import { looksLikeRoleId, normalizeRoleId, tryNormalizeRoleId } from '@/shared/role-id';
+import { looksLikeRoleId, tryNormalizeRoleId } from '@/shared/role-id';
 import type { UpdateRoleInput } from '@/shared/schemas/roles';
 import type {
   BulkImportSummary,
@@ -18,7 +18,7 @@ import type { Actor } from '../auth/session';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
 import { normalizeAddress } from '../geocoding/normalize-address';
 import { parseCoordinatePair } from '../parsing/coordinates';
-import { buildSummary } from './_shared';
+import { buildSummary, roleIdLikePatterns } from './_shared';
 import * as audit from './audit';
 import { detachRoleFromRecords, propagatePadronCoordinates, propagateRoleCoordinates } from './coordinates';
 
@@ -57,9 +57,19 @@ async function resultRolesOf(db: DbOrTx, roleIds: string[]): Promise<Map<string,
   return map;
 }
 
+/**
+ * Normaliza un rol que viene de la URL o de un formulario. Un formato inválido es un error de validación
+ * (400), no un error interno: `RoleIdInvalidError` no es un `AppError`.
+ */
+export function parseRoleIdParam(raw: string | null | undefined): string {
+  const r = tryNormalizeRoleId(raw);
+  if (!r.ok) throw new ValidationError(`El rol "${String(raw ?? '')}" no es válido: debe tener el formato 00000-00000, solo con números`);
+  if (!r.value) throw new ValidationError('Indica el rol');
+  return r.value;
+}
+
 export async function getRole(db: DbOrTx, roleId: string): Promise<RoleDto> {
-  const id = normalizeRoleId(roleId);
-  if (!id) throw new NotFoundError('El rol no existe');
+  const id = parseRoleIdParam(roleId);
   const [row] = await db.select().from(roles).where(eq(roles.id, id)).limit(1);
   if (!row) throw new NotFoundError(`El rol ${id} no está registrado`);
   const [results, [{ n } = { n: 0 }]] = await Promise.all([
@@ -76,19 +86,8 @@ export async function searchRoles(db: DbOrTx, q: string, limit = 8): Promise<Rol
   const found: RoleRow[] = [];
 
   if (looksLikeRoleId(term)) {
-    // Prefijo por partes: "50-1" → '00050-00001%'; "50" → '00050-%' además de '50%'
-    const m = /^(\d{1,5})(?:\s*[-–—/]\s*(\d{0,5}))?$/.exec(term);
-    const patterns: string[] = [];
-    if (m) {
-      const left = m[1]!.padStart(5, '0');
-      if (m[2] !== undefined) {
-        patterns.push(`${left}-${m[2]}%`);
-        if (m[2].length > 0) patterns.push(`${left}-${m[2].padStart(5, '0')}`);
-      } else {
-        patterns.push(`${left}-%`);
-        patterns.push(`${m[1]}%`);
-      }
-    }
+    // Prefijo por partes: "50-1" → '00050-00001' y '00050-1%'; "50" → '00050-%' además de '50%'
+    const patterns = roleIdLikePatterns(term);
     const rows = await db
       .select()
       .from(roles)
@@ -159,8 +158,7 @@ export async function ensureRoles(tx: DbOrTx, roleIds: string[]): Promise<void> 
 }
 
 export async function updateRole(db: DbOrTx, actor: Actor, roleId: string, patch: UpdateRoleInput): Promise<RoleDto> {
-  const id = normalizeRoleId(roleId);
-  if (!id) throw new NotFoundError('El rol no existe');
+  const id = parseRoleIdParam(roleId);
   return db.transaction(async (tx) => {
     const [before] = await tx.select().from(roles).where(eq(roles.id, id)).limit(1);
     if (!before) throw new NotFoundError(`El rol ${id} no está registrado`);
@@ -202,8 +200,7 @@ export async function updateRole(db: DbOrTx, actor: Actor, roleId: string, patch
 
 /** Borra un rol (§7.4): Conflict si participa en operaciones; sus registros quedan sin rol con coordenadas propias. */
 export async function deleteRole(db: DbOrTx, actor: Actor, roleId: string): Promise<void> {
-  const id = normalizeRoleId(roleId);
-  if (!id) throw new NotFoundError('El rol no existe');
+  const id = parseRoleIdParam(roleId);
   await db.transaction(async (tx) => {
     const [row] = await tx.select().from(roles).where(eq(roles.id, id)).limit(1);
     if (!row) throw new NotFoundError(`El rol ${id} no está registrado`);
@@ -232,7 +229,7 @@ export async function deleteRole(db: DbOrTx, actor: Actor, roleId: string): Prom
 
 // ---------- historial (§8.9) ----------
 
-async function loadOperationsByIds(db: DbOrTx, ids: number[]): Promise<RoleOperationDto[]> {
+export async function loadOperationsByIds(db: DbOrTx, ids: number[]): Promise<RoleOperationDto[]> {
   if (ids.length === 0) return [];
   const [ops, links, recs] = await Promise.all([
     db.select().from(roleOperations).where(inArray(roleOperations.id, ids)).orderBy(asc(roleOperations.effectiveDate), asc(roleOperations.id)),

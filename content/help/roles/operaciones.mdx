@@ -1,0 +1,27 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = {
+  title: 'Subdivisiones, fusiones y rectificaciones',
+  section: 'roles',
+  order: 1,
+  draft: true,
+};
+
+Con el tiempo, una propiedad puede dividirse en varias, varias pueden unirse en una, o el número de rol puede
+corregirse. La plataforma guarda estas operaciones como un historial que une los roles de origen con los
+roles resultantes, sin perder los permisos antiguos.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- Qué es cada tipo de operación y cuántos roles lleva: **subdivisión** (un rol da origen a dos o más),
+  **fusión** (dos o más dan origen a uno), **rectificación** (un rol cambia su número) y **modificación**
+  (una anotación en el historial, sin cambiar la vigencia).
+- Que los permisos anteriores **conservan el rol original** y los nuevos se registran con el rol resultante.
+- Qué significa el aviso **"No vigente"** en un rol y cómo llegar desde él a los roles que lo reemplazaron.
+- Cómo registrar una operación desde la ficha del rol y enlazar la resolución que la respalda.
+- La ubicación provisional de los roles nuevos mientras no se actualice el padrón.
+- Qué hacer si una operación se registró por error.
+- Cómo usar la lista de **roles que no vienen en el padrón** para detectar operaciones que faltan por
+  registrar.

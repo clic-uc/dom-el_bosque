@@ -1,0 +1,64 @@
+export const meta = {
+  title: 'Asignar el número de un permiso',
+  section: 'registros',
+  order: 2,
+  draft: false,
+};
+
+Algunas capas llevan una numeración correlativa, por ejemplo el N° Permiso en Obras Nuevas o la Resolución en
+Subdivisión y Fusión. Esta página explica cuándo asignar ese número desde la plataforma, por qué no se puede
+deshacer y qué hacer en los casos especiales.
+
+## Cuándo asignar el número
+
+El número se asigna **al final del proceso**: cuando el permiso ya está aprobado y los derechos municipales
+están pagados. Ese número va en el certificado, así que no debe repetirse ni saltarse.
+
+Mientras el permiso está en trámite, el registro existe en la plataforma **sin número**. Eso es normal: puedes
+crearlo, ubicarlo en el mapa y completar sus datos sin problema.
+
+## Cómo hacerlo
+
+1. Abre el registro en el panel lateral (desde el mapa, la tabla o la búsqueda).
+2. En el campo correlativo (por ejemplo **N° Permiso**) presiona **Asignar número**.
+3. La plataforma te muestra el número que corresponde y te pide confirmar.
+4. Al confirmar, el número queda guardado en el registro y no cambia más.
+
+La plataforma calcula el número siguiente al último entregado en esa capa. Si dos personas asignan un número
+al mismo tiempo, cada una recibe uno distinto y consecutivo; no hay riesgo de repetir ni de dejar huecos.
+
+Solo los usuarios de tipo **Editor** o **Administrador** pueden asignar números.
+
+## Por qué no se puede deshacer
+
+Una vez que un número se entrega, puede estar escrito en un certificado o en un documento oficial. Si la
+plataforma permitiera "devolverlo", el número siguiente podría repetirse. Por eso la acción pide confirmación
+y **no tiene botón de deshacer**.
+
+Si asignaste un número por error, no intentes borrar el registro: sigue las indicaciones de más abajo.
+
+## Qué hacer con un permiso anulado
+
+Si un permiso con número se anula después, **no borres el registro**. Márcalo como anulado en el campo que la
+capa tenga para eso (por ejemplo "Estado" o "Anulado") y agrega un comentario con el motivo.
+
+Así el número queda ocupado, la numeración sigue sin huecos y queda constancia de qué pasó con ese permiso.
+Si se borra el registro, su número tampoco se reutiliza, pero se pierde el historial.
+
+## Cómo pedir la corrección de un número
+
+Si un número quedó mal asignado o se entregó fuera de la plataforma (por ejemplo, todavía en Excel), solo un
+**Administrador** puede corregirlo o ajustar cuál es el próximo número. Para pedirlo:
+
+1. Anota el rol o la dirección del registro y el número que corresponde.
+2. Explica brevemente el motivo (la plataforma lo guarda junto con el cambio en la auditoría).
+3. Entrega esa información al administrador de la DOM.
+
+Mientras se sigan asignando números en Excel, al importar una planilla puede aparecer un número que la
+plataforma ya entregó a otro registro. Si el correlativo es uno de los [campos únicos](/help/capas/campos-unicos)
+de la capa, ese caso aparecerá como **registro repetido** en la revisión de la importación para que lo resuelvas.
+
+## Más información
+
+- [Correlativos](/help/capas/correlativos): cómo se configura la numeración en una capa.
+- [Crear y editar registros](/help/registros/crear-y-editar).

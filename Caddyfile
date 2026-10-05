@@ -1,0 +1,20 @@
+# Reverse proxy con TLS automático (Let's Encrypt) para SIGDOM El Bosque (§12.2).
+#
+# SITE_ADDRESS se toma del entorno del contenedor caddy (docker-compose.prod.yml → .env.production).
+# Para probar en local sin dominio ni certificados públicos, define SITE_ADDRESS=localhost
+# (Caddy emite un certificado local autofirmado) o SITE_ADDRESS=http://localhost (sin TLS).
+{$SITE_ADDRESS:sigdomelbosque.cl} {
+	encode gzip zstd
+
+	reverse_proxy app:3000
+
+	header {
+		# No revelar el servidor
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

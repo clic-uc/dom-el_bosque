@@ -1,0 +1,19 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = { title: 'Historial y revertir', section: 'importacion', order: 5, draft: true };
+
+Cada importación queda en un historial con sus conteos y su archivo de errores. Si una carga salió mal,
+puedes revertirla: la plataforma borra lo que se creó y restaura lo que se modificó, como si no hubiera
+pasado.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- Dónde ver el **historial de importaciones** de una capa y qué información tiene cada una.
+- Descargar las **filas con errores** como archivo, con una columna que explica el problema de cada fila.
+- **Revertir** una importación: qué se borra (los registros creados) y qué se restaura (los registros
+  actualizados y los eliminados por reemplazo).
+- El aviso que aparece cuando algún registro **se modificó después** de la importación, y cómo decidir si
+  continuar.
+- Quién puede revertir: los editores solo sus propias importaciones; los administradores, todas.

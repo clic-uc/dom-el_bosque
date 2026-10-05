@@ -1,5 +1,5 @@
-import { asc, eq } from 'drizzle-orm';
-import type { Db } from '@/db/client';
+import { and, asc, eq, gt } from 'drizzle-orm';
+import type { DbOrTx } from '@/db/client';
 import { records } from '@/db/schema';
 import { coordsSourceLabels } from '@/shared/constants';
 import { formatFieldValue } from '@/lib/format';
@@ -20,7 +20,7 @@ function csvCell(value: unknown, delimiter: string): string {
 }
 
 export async function exportCsv(
-  db: Db,
+  db: DbOrTx,
   layerId: number,
   opts: { delimiter: ',' | ';' },
 ): Promise<{ stream: ReadableStream<Uint8Array>; fileName: string }> {
@@ -41,53 +41,60 @@ export async function exportCsv(
   const fileName = `export-${layer.slug}-${stamp}.csv`;
 
   const BATCH = 2000;
+  // Paginación por cursor (`id > lastId`): cada `pull` entrega un lote y el consumidor marca el ritmo.
+  let lastId = 0;
+  let done = false;
   const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
+    start(controller) {
       controller.enqueue(encoder.encode('﻿' + header.map((h) => csvCell(h, d)).join(d) + '\r\n'));
     },
     async pull(controller) {
-      // se consume completo en una pasada por lotes
-      let lastId = 0;
-      try {
-        for (;;) {
-          const rows = await db
-            .select({
-              id: records.id,
-              roleId: records.roleId,
-              lat: records.lat,
-              lon: records.lon,
-              coordsSource: records.coordsSource,
-              attributes: records.attributes,
-              comments: records.comments,
-            })
-            .from(records)
-            .where(eq(records.layerId, layerId))
-            .orderBy(asc(records.id))
-            .limit(BATCH)
-            .offset(0)
-            .then((rs) => rs.filter((r) => r.id > lastId));
-          const page = rows.length ? rows : [];
-          if (page.length === 0) break;
-          const chunk = page
-            .map((r) => {
-              lastId = r.id;
-              const cells = [
-                r.id,
-                ...(layer.hasRole ? [r.roleId ?? ''] : []),
-                r.lat ?? '',
-                r.lon ?? '',
-                r.coordsSource ? coordsSourceLabels[r.coordsSource] : '',
-                ...layer.fields.map((f) => formatFieldValue(r.attributes[f.key], f.type)),
-                r.comments ?? '',
-              ];
-              return cells.map((c) => csvCell(c, d)).join(d);
-            })
-            .join('\r\n');
-          controller.enqueue(encoder.encode(chunk + '\r\n'));
-          if (page.length < BATCH) break;
-        }
-      } finally {
+      if (done) {
         controller.close();
+        return;
+      }
+      try {
+        const page = await db
+          .select({
+            id: records.id,
+            roleId: records.roleId,
+            lat: records.lat,
+            lon: records.lon,
+            coordsSource: records.coordsSource,
+            attributes: records.attributes,
+            comments: records.comments,
+          })
+          .from(records)
+          .where(and(eq(records.layerId, layerId), gt(records.id, lastId)))
+          .orderBy(asc(records.id))
+          .limit(BATCH);
+        if (page.length === 0) {
+          done = true;
+          controller.close();
+          return;
+        }
+        const chunk = page
+          .map((r) => {
+            lastId = r.id;
+            const cells = [
+              r.id,
+              ...(layer.hasRole ? [r.roleId ?? ''] : []),
+              r.lat ?? '',
+              r.lon ?? '',
+              r.coordsSource ? coordsSourceLabels[r.coordsSource] : '',
+              ...layer.fields.map((f) => formatFieldValue(r.attributes[f.key], f.type)),
+              r.comments ?? '',
+            ];
+            return cells.map((c) => csvCell(c, d)).join(d);
+          })
+          .join('\r\n');
+        controller.enqueue(encoder.encode(chunk + '\r\n'));
+        if (page.length < BATCH) {
+          done = true;
+          controller.close();
+        }
+      } catch (err) {
+        controller.error(err);
       }
     },
   });

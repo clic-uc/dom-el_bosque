@@ -24,7 +24,8 @@ export async function listLayers(db: DbOrTx): Promise<LayerWithCountRow[]> {
   const rows = await db
     .select({
       layer: layers,
-      recordCount: sql<number>`(SELECT count(*)::int FROM ${records} WHERE ${records.layerId} = ${layers.id})`,
+      // Identificadores explícitos: en un select sin joins Drizzle quita el prefijo de tabla y `"id"` se resolvería a records.id.
+      recordCount: sql<number>`(SELECT count(*)::int FROM records r WHERE r.layer_id = layers.id)`,
     })
     .from(layers)
     .orderBy(asc(layers.department), asc(layers.sortOrder), asc(layers.name));
@@ -121,8 +122,8 @@ async function migrateFieldChanges(
   for (const { from, to } of renames) {
     if (!afterKeys.has(to)) throw new ValidationError(`El campo renombrado "${to}" no está en la lista de campos`);
     const res = await tx.execute<{ id: number }>(sql`
-      UPDATE records SET attributes = (attributes - ${from}) || jsonb_build_object(${to}, attributes->${from}), updated_at = now()
-      WHERE layer_id = ${layerId} AND attributes ? ${from}
+      UPDATE records SET attributes = (attributes - ${from}::text) || jsonb_build_object(${to}::text, attributes->${from}::text), updated_at = now()
+      WHERE layer_id = ${layerId} AND attributes ? ${from}::text
       RETURNING id
     `);
     report.renamed.push({ from, to, affectedRecords: res.length });
@@ -132,8 +133,8 @@ async function migrateFieldChanges(
   for (const f of before) {
     if (afterKeys.has(f.key) || renameMap.has(f.key)) continue;
     const res = await tx.execute<{ id: number }>(sql`
-      UPDATE records SET attributes = attributes - ${f.key}, updated_at = now()
-      WHERE layer_id = ${layerId} AND attributes ? ${f.key}
+      UPDATE records SET attributes = attributes - ${f.key}::text, updated_at = now()
+      WHERE layer_id = ${layerId} AND attributes ? ${f.key}::text
       RETURNING id
     `);
     report.removed.push({ key: f.key, label: f.label, affectedRecords: res.length });
@@ -162,7 +163,7 @@ async function migrateFieldChanges(
       if (cast.ok) {
         if (JSON.stringify(cast.value) !== JSON.stringify(r.value)) {
           await tx.execute(sql`
-            UPDATE records SET attributes = attributes || jsonb_build_object(${newKey}, ${JSON.stringify(cast.value)}::jsonb)
+            UPDATE records SET attributes = attributes || jsonb_build_object(${newKey}::text, ${JSON.stringify(cast.value)}::jsonb)
             WHERE id = ${r.id}
           `);
         }
@@ -171,7 +172,7 @@ async function migrateFieldChanges(
         if (af.type === 'autonumber') failures.push(r.value);
         else {
           await tx.execute(sql`
-            UPDATE records SET attributes = attributes || jsonb_build_object(${newKey}, ${JSON.stringify(String(r.value))}::jsonb)
+            UPDATE records SET attributes = attributes || jsonb_build_object(${newKey}::text, ${JSON.stringify(String(r.value))}::jsonb)
             WHERE id = ${r.id}
           `);
         }

@@ -10,7 +10,7 @@ import type { Actor } from '../auth/session';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import { getGeocoder } from '../geocoding';
 import { castAttributes } from '../parsing/values';
-import { attr, escapeLike, recordColumns, requireLayer, type LayerRow, type RecordRowNoGeom } from './_shared';
+import { attr, escapeLike, recordColumns, requireLayer, roleIdLikePatterns, type LayerRow, type RecordRowNoGeom } from './_shared';
 import * as attachmentsService from './attachments';
 import * as audit from './audit';
 import { applyRoleChange, propagateRoleCoordinates, resolveCoordinatesForNew, roleAdoptCoordinates } from './coordinates';
@@ -29,9 +29,12 @@ function buildWhere(
 
   if (q.search) {
     const like = `%${escapeLike(q.search)}%`;
+    // "50-2" también encuentra el rol 00050-00002 (normalizado con ceros, §8.6)
+    const rolePatterns = roleIdLikePatterns(q.search).map((p) => ilike(records.roleId, p));
     conds.push(
       or(
         ilike(records.roleId, like),
+        ...rolePatterns,
         ilike(records.comments, like),
         sql`${records.attributes}::text ILIKE ${like}`,
       )!,
@@ -412,21 +415,25 @@ export async function updateCoordinates(
     if (input.scope === 'role') {
       if (!rec.roleId) throw new ValidationError('Este registro no tiene rol: solo puedes mover este registro');
       await tx.update(roles).set({ lat: input.lat, lon: input.lon }).where(eq(roles.id, rec.roleId));
-      // el registro movido queda 'role' aunque fuera 'own'
-      await tx
-        .update(records)
-        .set({ lat: input.lat, lon: input.lon, coordsSource: 'role', geocode: null, updatedBy: actor.userId })
-        .where(eq(records.id, id));
-      const others = await propagateRoleCoordinates(tx, rec.roleId, input.lat, input.lon);
+      // propaga a los registros 'role', 'geocoded' o sin coordenadas del rol (incluye al movido si era uno de ellos)
+      let updated = await propagateRoleCoordinates(tx, rec.roleId, input.lat, input.lon);
+      // el registro movido queda 'role' aunque fuera 'own' (no lo cubre la propagación)
+      if (rec.coordsSource === 'own') {
+        await tx
+          .update(records)
+          .set({ lat: input.lat, lon: input.lon, coordsSource: 'role', geocode: null, updatedBy: actor.userId })
+          .where(eq(records.id, id));
+        updated += 1;
+      }
       await audit.log(tx, {
         actor,
         action: 'UPDATE',
         entityType: 'ROLE',
         entityId: rec.roleId,
         layerId: rec.layerId,
-        metadata: { coordinates: 'scope=role', fromRecordId: id, lat: input.lat, lon: input.lon, updatedRecords: others + 1 },
+        metadata: { coordinates: 'scope=role', fromRecordId: id, lat: input.lat, lon: input.lon, updatedRecords: updated },
       });
-      return { updated: others + 1 };
+      return { updated };
     }
 
     await tx

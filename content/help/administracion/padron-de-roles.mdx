@@ -1,0 +1,17 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = { title: 'Padrón de roles', section: 'administracion', order: 3, draft: true };
+
+El padrón de roles es la lista maestra de todas las propiedades de la comuna, con su Rol SII, su dirección y
+su ubicación. La plataforma lo usa para ubicar registros automáticamente y para buscar por dirección.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- Qué es el **archivo maestro** del padrón (unas 42.600 propiedades) y de dónde proviene.
+- **Cuándo volver a cargarlo**: cuando el SII entrega una versión nueva o cuando se corrigieron ubicaciones.
+- Cómo afecta la actualización a la **ubicación de los registros**: se mueven los que usan la ubicación del
+  rol o una aproximada por dirección; los que tienen ubicación propia no cambian.
+- Cómo afecta a la **búsqueda por dirección** y a la ubicación automática al importar.
+- La lista de **roles que no vienen en el padrón** (creados desde registros o importaciones) y cómo revisarla.

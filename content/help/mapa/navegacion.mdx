@@ -1,0 +1,19 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = { title: 'Navegar el mapa', section: 'mapa', order: 1, draft: true };
+
+El mapa es la pantalla principal de la plataforma. Aquí eliges qué capa estás trabajando, ves los registros
+como puntos sobre la comuna y puedes cambiar a una tabla cuando necesitas revisar muchos datos a la vez.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- Qué es la **capa de trabajo** (la que estás editando o revisando) y qué son las **capas superpuestas** (las
+  que ves de fondo para comparar), y cuándo conviene usar cada una.
+- Por qué los puntos se agrupan en círculos con un número cuando estás lejos, y cómo al acercar el mapa se
+  separan en puntos individuales.
+- Los **polígonos de referencia**: el límite de la comuna, los sectores y las villas o poblaciones.
+- Cómo pasar de la **vista de mapa** a la **vista de tabla** y volver.
+- Que la dirección que aparece en el navegador guarda la vista actual: si la copias y la compartes con un
+  colega, abrirá exactamente el mismo mapa, con las mismas capas y la misma posición.

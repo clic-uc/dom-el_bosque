@@ -1,0 +1,17 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = { title: 'Exportar', section: 'importacion', order: 6, draft: true };
+
+Exportar permite descargar los registros de una capa como un archivo que se abre en Excel. Sirve para
+compartir información, hacer informes o trabajar con los datos fuera de la plataforma.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- Cómo elegir la **capa** a exportar y si se exportan todos los registros o solo los filtrados.
+- Qué es el **delimitador** y cuál elegir para que Excel abra el archivo con las columnas bien separadas (por
+  defecto, punto y coma).
+- Cómo **abrir el archivo en Excel** sin que se pierdan los acentos ni los ceros a la izquierda del rol.
+- Qué **columnas** incluye el archivo: rol, dirección, ubicación, todos los campos de la capa y fechas de
+  creación y modificación.

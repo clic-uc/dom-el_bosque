@@ -1,0 +1,21 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = { title: 'Importar paso a paso', section: 'importacion', order: 2, draft: true };
+
+El asistente de importación te guía para cargar una planilla completa en una capa. Primero subes el archivo,
+luego indicas qué columna va en cada campo, revisas los problemas que la plataforma detecta y, al final,
+confirmas. Nada se guarda hasta que confirmas.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- Los **cuatro pasos**: subir el archivo, mapear columnas, revisar y confirmar.
+- Cómo **mapear columnas**: indicar qué columna de la planilla corresponde a cada campo de la capa.
+- Importar **solo un rango de filas** (por ejemplo, las filas nuevas desde la última carga).
+- Qué significa cada pestaña de la revisión: **Válidas**, **Con advertencias**, **Con errores** y
+  **Duplicados**.
+- Corregir un error directamente en la revisión, **sin volver a subir el archivo**.
+- Resolver duplicados uno por uno o todos a la vez: **omitir**, **actualizar el existente** o **crear igual**.
+- Que las celdas vacías **no borran** los datos que ya existen en un registro.
+- Retomar un borrador que dejaste a medias, y que los borradores **vencen a los 7 días**.

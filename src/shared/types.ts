@@ -233,3 +233,16 @@ export type ApiErrorBody = { error: { code: ApiErrorCode; message: string; detai
 
 /** Detalles de un `Conflict` por identidad repetida (§8.4), para el botón "Abrir registro existente". */
 export type DuplicateConflictDetails = { kind: 'duplicate'; existingRecordId: number; identity: Record<string, string> };
+
+// ---------- Administración de usuarios (fase 8) ----------
+/** Respuesta de `GET /api/admin/users`: lista acotada por `limit/offset` con el total para paginar. */
+export type UsersList = { data: UserItem[]; total: number };
+
+// ---------- Importaciones (fase 7) ----------
+/** `GET /api/imports/:id`: estado + resumen de la capa; `source` solo con `?source=1` (para retomar un borrador). */
+export type ImportStatusFull = ImportStatusDto & {
+  layer: ImportSource['layer'];
+  /** Filas aún pendientes de geocodificación externa (`progress.pendingGeocode`). */
+  pendingGeocode: number;
+  source?: ImportSource;
+};

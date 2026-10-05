@@ -1,0 +1,20 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = { title: 'Ubicación de un registro', section: 'registros', order: 3, draft: true };
+
+Cada registro tiene una ubicación en el mapa, que puede venir del rol, haberse ingresado a mano o haberse
+calculado a partir de la dirección. Saber de dónde salió ayuda a entender qué pasa cuando cambia el rol o se
+actualiza el padrón.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- Los tres orígenes de la ubicación: **del rol** (copiada del padrón y lo sigue si el rol cambia), **propia**
+  (ingresada a mano o venía en el archivo; nada automático la mueve) y **aproximada por dirección** (calculada
+  desde la dirección; se reemplaza si aparece la del rol).
+- Qué pasa con cada una cuando cambia el rol del registro o cuando se actualiza el padrón.
+- Mover un marcador arrastrándolo: la diferencia entre **"Solo este registro"** y **"Todos los registros del
+  rol"**.
+- El botón **"Usar coordenadas del rol"** para volver a la ubicación del padrón.
+- Qué significa el aviso **"Sin ubicación"** y cómo resolverlo.

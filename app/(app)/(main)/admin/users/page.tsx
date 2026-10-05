@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
-import { EmptyState } from '@/components/shared/states';
+import { UsersAdmin } from '@/features/admin/UsersAdmin';
 
 export const metadata: Metadata = { title: 'Usuarios' };
 
-/** Placeholder: se implementa en la fase 8 (`features/admin/UsersTable`). */
+/** Gestión de usuarios (§10.3). El guard admin está en el layout. */
 export default function AdminUsersPage() {
-  return <EmptyState title="Gestión de usuarios" description="Esta sección se está preparando." />;
+  return <UsersAdmin />;
 }

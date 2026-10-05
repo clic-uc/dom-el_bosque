@@ -1,0 +1,27 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = {
+  title: 'Volver a subir una planilla completa',
+  section: 'importacion',
+  order: 3,
+  draft: true,
+};
+
+A veces la planilla original se corrige o se reordena entera y conviene volver a subirla completa. La opción
+de reemplazo actualiza los registros que ya existen y te muestra cuáles quedaron fuera del archivo para que
+decidas qué hacer con ellos.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- **Cuándo usarlo**: la planilla se corrigió o reordenó entera y quieres que la capa quede igual al archivo.
+- Que requiere que la capa tenga [campos únicos](/help/capas/campos-unicos), porque sin ellos la plataforma no
+  sabe qué fila corresponde a qué registro.
+- Que los registros que vienen en el archivo **se actualizan** conservando su ubicación propia, comentarios y
+  adjuntos.
+- Revisar la pestaña **"No están en el archivo"** antes de eliminar nada.
+- Por qué algunos registros **no se pueden eliminar** desde la importación (tienen adjuntos o un número
+  asignado por la plataforma).
+- Que la operación completa **se puede revertir** después.
+- La alternativa más simple: subir **solo las filas nuevas** usando un rango.

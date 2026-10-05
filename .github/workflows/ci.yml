@@ -1,0 +1,174 @@
+# CI (§12.5): typecheck → lint → knip → migraciones → drizzle-kit check → vitest → docker build,
+# y Playwright en un job aparte con PostGIS de servicio, app en modo producción y worker levantado.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Variables mínimas para env.ts en tests y build (sin SKIP_ENV_VALIDATION).
+  DATABASE_URL: postgres://postgres:password@localhost:5432/sigdom_test
+  BETTER_AUTH_SECRET: ci-secret-ci-secret-ci-secret-ci-secret-0000
+  BETTER_AUTH_URL: http://localhost:3000
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+  NEXT_PUBLIC_MAP_STYLE_URL: https://tiles.openfreemap.org/styles/liberty
+  STORAGE_DIR: ./storage
+  GEOCODER_PROVIDERS: padron
+  LOG_LEVEL: silent
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  check:
+    name: Tipos, lint, tests y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      db:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_DB: sigdom_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sigdom_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node 22 + pnpm (corepack)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - name: Caché del store de pnpm
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm knip
+      - name: Migraciones contra PostGIS
+        run: pnpm db:migrate
+      - name: drizzle-kit check (sin drift en drizzle/)
+        run: pnpm exec drizzle-kit check
+      - name: Vitest
+        run: pnpm test
+      - name: Scripts CLI empaquetados (esbuild)
+        run: pnpm build:scripts && node dist-scripts/migrate.js
+
+      - name: Docker build (imagen runner)
+        uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runner
+          push: false
+          load: false
+          tags: sigdom-app:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  e2e:
+    name: Playwright
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 40
+    services:
+      db:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_DB: sigdom_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sigdom_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      E2E_BASE_URL: http://localhost:3000
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+        env:
+          NODE_ENV: development
+
+      - name: 'Base de datos: migraciones, seeds y polígonos'
+        run: |
+          pnpm db:migrate
+          pnpm db:seed
+          pnpm geo:import
+
+      - name: Usuarios de prueba
+        run: |
+          pnpm auth:create-admin --email admin@e2e.test --name "Admin E2E" --password 'Sigdom-e2e-2026!'
+          pnpm e2e:seed --temp
+
+      - name: Build de producción
+        run: pnpm build
+
+      - name: Levantar app y worker
+        run: |
+          mkdir -p storage
+          nohup pnpm start > app.log 2>&1 &
+          nohup pnpm exec tsx scripts/worker.ts > worker.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/api/health >/dev/null 2>&1; then echo "app lista"; exit 0; fi
+            sleep 2
+          done
+          echo "La app no respondió a tiempo"; cat app.log; exit 1
+
+      - name: Prueba de humo
+        run: ./scripts/smoke.sh http://localhost:3000
+        env:
+          SMOKE_EMAIL: admin@e2e.test
+          SMOKE_PASSWORD: Sigdom-e2e-2026!
+
+      - name: Navegadores de Playwright
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Playwright
+        run: pnpm test:e2e
+
+      - name: Logs de app y worker
+        if: failure()
+        run: |
+          echo "::group::app.log"; cat app.log || true; echo "::endgroup::"
+          echo "::group::worker.log"; cat worker.log || true; echo "::endgroup::"
+
+      - name: Reporte de Playwright
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 14
+          if-no-files-found: ignore

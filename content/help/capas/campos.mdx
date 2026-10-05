@@ -1,0 +1,19 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = { title: 'Campos de una capa', section: 'capas', order: 2, draft: true };
+
+Los campos son las columnas de una capa: N° Permiso, Propietario, Fecha, Monto, etc. Cada campo tiene un tipo
+que define qué valores acepta. Esta página explica cómo elegir el tipo y qué pasa al cambiar un campo que ya
+tiene datos.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- Los tipos de campo (**texto**, **número**, **sí/no**, **fecha**) y cuándo usar cada uno.
+- Qué es un campo **requerido** y qué pasa al importar una fila que lo deja vacío.
+- La diferencia entre cambiar la **etiqueta** (el nombre que se ve) y cambiar la **clave** (el nombre interno
+  con que se guarda), y por qué lo segundo casi nunca hace falta.
+- Que **eliminar un campo borra sus valores** en todos los registros de la capa.
+- Cambiar el tipo de un campo con datos: cómo se convierten los valores existentes y qué pasa con los que no se
+  pueden convertir.

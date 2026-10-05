@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import type { DbOrTx } from '@/db/client';
+import { db as appDb, type DbOrTx } from '@/db/client';
 import { geocodeCache } from '@/db/schema';
 import { env } from '@/env';
 import type { GeocodeResult } from '@/shared/schemas/geocode';
@@ -32,8 +32,17 @@ export type GeocoderOptions = {
   fetchImpl?: typeof fetch;
 };
 
+/** Con `SKIP_ENV_VALIDATION` la variable llega sin transformar (string); aquí se tolera cualquiera de las dos formas. */
+function configuredProviders(): GeocodeProviderName[] {
+  const raw: unknown = env.GEOCODER_PROVIDERS;
+  const list = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(',') : ['padron', 'nominatim'];
+  return list
+    .map((p) => String(p).trim())
+    .filter((p): p is GeocodeProviderName => p === 'padron' || p === 'nominatim' || p === 'photon');
+}
+
 export function createGeocoder(db: DbOrTx, opts: GeocoderOptions = {}): Geocoder {
-  const names = opts.providers ?? env.GEOCODER_PROVIDERS;
+  const names = opts.providers ?? configuredProviders();
   const providers: GeocodeProvider[] = [];
   for (const name of names) {
     const override = opts.overrides?.[name];
@@ -98,10 +107,20 @@ declare global {
   var __sigdomGeocoder: Geocoder | undefined;
 }
 
-/** Geocodificador por defecto de la app (singleton por proceso). */
-export function getGeocoder(db: DbOrTx): Geocoder {
-  if (!globalThis.__sigdomGeocoder) globalThis.__sigdomGeocoder = createGeocoder(db);
+/**
+ * Geocodificador por defecto de la app (singleton por proceso).
+ * Se construye siempre sobre la conexión de la app (`appDb`), nunca sobre la transacción desde la que se pide:
+ * una transacción se cierra y el singleton la sobreviviría. El parámetro se conserva por compatibilidad.
+ * Los tests pueden reemplazarlo con `setGeocoder`.
+ */
+export function getGeocoder(_db?: DbOrTx): Geocoder {
+  if (!globalThis.__sigdomGeocoder) globalThis.__sigdomGeocoder = createGeocoder(appDb);
   return globalThis.__sigdomGeocoder;
+}
+
+/** Reemplaza el singleton (tests). Con `null` vuelve al geocodificador por defecto en la próxima llamada. */
+export function setGeocoder(geocoder: Geocoder | null): void {
+  globalThis.__sigdomGeocoder = geocoder ?? undefined;
 }
 
 export { normalizeAddress };

@@ -63,3 +63,19 @@ export function attr(key: string): SQL {
 export function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
+
+/**
+ * Patrones ILIKE para buscar un rol escrito a medias (§8.6): "50-1" → '00050-00001' y '00050-1%';
+ * "50" → '00050-%' y '50%'. Vacío si lo escrito no parece un rol.
+ */
+export function roleIdLikePatterns(term: string): string[] {
+  const m = /^(\d{1,5})(?:\s*[-–—/]\s*(\d{0,5}))?$/.exec(term.trim());
+  if (!m) return [];
+  const left = m[1]!.padStart(5, '0');
+  if (m[2] !== undefined) {
+    const patterns = [`${left}-${m[2]}%`];
+    if (m[2].length > 0) patterns.push(`${left}-${m[2].padStart(5, '0')}`);
+    return patterns;
+  }
+  return [`${left}-%`, `${m[1]}%`];
+}

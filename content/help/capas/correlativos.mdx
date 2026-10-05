@@ -1,0 +1,21 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = { title: 'Correlativos', section: 'capas', order: 4, draft: true };
+
+Un correlativo es un campo cuya numeración la lleva la plataforma: cada vez que se asigna, entrega el número
+siguiente sin repetir ni saltarse. Es la forma de numerar permisos y resoluciones sin depender de una planilla.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- Qué es un campo correlativo y qué capas deberían tenerlo (Obras Nuevas, Recepción Final, Subdivisión y
+  Fusión, entre otras).
+- Que **cada capa lleva su propia numeración**; no se comparten números entre capas.
+- El **reinicio anual**, solo para capas que numeran por año, y por qué en ese caso el año debe ser parte de los
+  [campos únicos](/help/capas/campos-unicos).
+- Cómo se calcula el próximo número después de importar una planilla con los números históricos (sigue desde
+  el mayor que exista).
+- Quién puede **ajustar el próximo número** (solo administradores, con motivo) y cuándo corresponde hacerlo.
+- Cómo convertir un campo existente en correlativo y qué requisitos deben cumplir sus valores.
+- Cómo se usa en el día a día: [Asignar el número de un permiso](/help/registros/asignar-numero).

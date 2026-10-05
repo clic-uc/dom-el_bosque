@@ -1,0 +1,20 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = { title: 'Mapas de calor', section: 'mapa', order: 4, draft: true };
+
+Un mapa de calor pinta la comuna con colores según cuántos registros hay en cada zona, o según cuánto suma un
+valor (por ejemplo, el monto invertido). Sirve para ver de un vistazo dónde se concentra algo.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- La diferencia entre un mapa de calor **por densidad** (cuántos registros hay) y **por valor** (cuánto suman),
+  con ejemplos: incendios y emergencias por densidad; inversión en calzadas, veredas, sedes y plazas por
+  monto.
+- Qué capas se pueden incluir y por qué algunas aparecen deshabilitadas (no tienen un campo de valor
+  configurado).
+- Que los valores de las capas elegidas **se suman**, así que deben estar en la misma unidad (todos en pesos,
+  por ejemplo).
+- Cómo leer la leyenda de colores.
+- Para qué sirven los controles de **radio** e **intensidad**.

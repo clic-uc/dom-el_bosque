@@ -1,0 +1,51 @@
+# Dependencias y salidas de build (se generan dentro de la imagen)
+node_modules
+.next
+out
+dist-scripts
+*.tsbuildinfo
+next-env.d.ts
+
+# Entorno y secretos: nunca entran en la imagen (llegan por env_file en runtime)
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Datos locales y respaldos
+storage
+backups
+*.log
+roles.csv
+data/roles*.csv
+
+# Pruebas y reportes
+e2e
+coverage
+playwright-report
+test-results
+**/*.test.ts
+**/*.test.tsx
+vitest.config.mts
+vitest.setup.ts
+playwright.config.ts
+
+# Infra que no necesita la imagen
+.git
+.github
+.vscode
+.idea
+docker-compose*.yml
+Caddyfile
+Dockerfile
+.dockerignore
+docs
+README.md
+AGENTS.md
+CLAUDE.md
+scripts/*.sh
+scripts/crontab.example
+
+# Sistema
+.DS_Store
+Thumbs.db

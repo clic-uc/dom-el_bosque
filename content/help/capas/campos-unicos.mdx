@@ -1,0 +1,79 @@
+export const meta = { title: 'Campos únicos', section: 'capas', order: 3, draft: false };
+
+Los campos únicos son las columnas que permiten reconocer un registro dentro de una capa, junto con el Rol SII.
+Gracias a ellos la plataforma detecta registros repetidos y puede actualizar los que ya existen cuando vuelves
+a subir una planilla. Esta página explica qué son, cómo elegirlos y qué pasa al cambiarlos.
+
+## 1. Qué son
+
+Son los campos que, **junto con el Rol SII**, identifican a un registro dentro de una capa. En la mayoría de las
+capas el rol por sí solo no alcanza: en Obras Menores, por ejemplo, una misma propiedad puede tener varios
+permisos de años distintos. El rol no distingue uno de otro, pero el rol más el **N° Permiso** sí.
+
+Cada capa define sus propios campos únicos. Un administrador los elige al crear o editar la capa, en la
+sección **Campos únicos**.
+
+## 2. Para qué sirven
+
+Sirven para que la plataforma sepa cuándo dos filas hablan del **mismo** registro. Eso permite dos cosas:
+
+- Detectar registros repetidos, tanto al importar una planilla como al crear un registro a mano.
+- Que volver a subir el mismo archivo Excel **actualice** los registros que ya existen, en vez de duplicarlos.
+
+Sin campos únicos, cada importación de la misma planilla crearía todas las filas de nuevo.
+
+## 3. Cómo se combinan con el rol
+
+- En capas **con rol**, la identidad de un registro es el **rol más los campos únicos**. Si la capa no tiene
+  campos únicos, un rol puede repetirse todas las veces que haga falta y la plataforma no detecta duplicados;
+  en la revisión de una importación solo verás el aviso "El rol ya tiene N registros en esta capa".
+- En capas **sin rol**, la identidad son **solo los campos únicos**.
+
+Los valores se comparan sin importar mayúsculas, acentos ni espacios de más, así que "Permiso 123" y
+"permiso 123" se consideran iguales.
+
+## 4. Cómo elegirlos
+
+Elige campos que **no cambian con el tiempo** y que **siempre se llenan**: número de permiso, número de
+resolución, Rut. Evita campos escritos a mano o que pueden cambiar, como el nombre del propietario, la
+dirección o las observaciones. Si la capa tiene un [correlativo](/help/capas/correlativos), normalmente ese
+es el campo único.
+
+Ejemplos sugeridos por capa (a validar con la DOM):
+
+| Capa                                               | Campos únicos sugeridos                                          |
+| -------------------------------------------------- | ---------------------------------------------------------------- |
+| Obras Menores, Obras Nuevas, Leyes 19.583 y 20.898 | N° Permiso                                                       |
+| Recepción Final                                    | N° Recepción Final                                               |
+| Subdivisión y Fusión                               | Resolución + Año (la numeración se reinició cada año hasta 2020) |
+| Actividades Comerciales                            | Rut                                                              |
+| Puntos de parada                                   | Nombre                                                           |
+
+## 5. Qué pasa con valores vacíos
+
+Si en una fila falta alguno de los campos únicos, la plataforma **no puede compararla** con las demás. Esa fila
+no se marca como repetida ni como nueva con seguridad: aparece con la advertencia **"Campos únicos
+incompletos"** para que la revises y completes el dato si lo tienes.
+
+## 6. Cambiarlos en una capa con datos
+
+Cambiar los campos únicos de una capa **no modifica ningún registro**. Antes de guardar, la plataforma revisa
+los datos existentes y te muestra el aviso "Con esta configuración hay N grupos de registros repetidos", con
+algunos ejemplos.
+
+Si aparecen grupos repetidos, revísalos en la vista de tabla de la capa: puede que sean registros que de
+verdad están duplicados (corrige o elimina los sobrantes) o que los campos elegidos no sean los adecuados
+(elige otros).
+
+## 7. Cómo se ve en la importación
+
+Al importar una planilla, las filas que coinciden con un registro existente aparecen en la pestaña
+**Duplicados** de la revisión. Para cada una, o para todas a la vez, puedes elegir:
+
+- **Omitir**: no se importa la fila; el registro existente queda como está.
+- **Actualizar el existente**: la fila reemplaza los datos del registro que ya existe, conservando su
+  ubicación propia, comentarios y adjuntos.
+- **Crear igual**: se crea un registro nuevo aunque sea repetido (úsalo solo si estás seguro).
+
+Más detalle en [Importar paso a paso](/help/importacion/asistente) y en
+[Volver a subir una planilla completa](/help/importacion/reemplazar-capa).

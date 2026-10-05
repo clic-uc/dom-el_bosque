@@ -135,7 +135,9 @@ export async function setNumber(
           : sql``;
       const clash = await tx.execute<{ id: number }>(sql`
         SELECT id FROM records
-        WHERE layer_id = ${rec.layerId} AND id <> ${recordId} AND (attributes->>${field.key})::bigint = ${value}
+        WHERE layer_id = ${rec.layerId} AND id <> ${recordId}
+          AND jsonb_typeof(attributes->${field.key}) = 'number'
+          AND (attributes->>${field.key})::bigint = ${value}
         ${periodCond}
         LIMIT 1
       `);
@@ -215,7 +217,7 @@ export async function setNextNumber(db: DbOrTx, actor: Actor, layerId: number, p
       entityType: 'LAYER',
       entityId: layerId,
       layerId,
-      metadata: { counter: field.key, period: p, before: last + 1, after: next, reason },
+      metadata: { counter: field.key, period: p, before: Math.max(last, max) + 1, after: next, reason },
     });
     return { next };
   });

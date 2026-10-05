@@ -1,0 +1,15 @@
+# Tareas programadas para el servidor de SIGDOM El Bosque (§12.2).
+# Instalar con: crontab -e  (pegar estas líneas ajustando la ruta del proyecto)
+#
+# Ajusta /opt/sigdom a la carpeta donde está clonado el repositorio (contiene docker-compose.prod.yml).
+# Los respaldos quedan en /opt/sigdom/backups: incluyen usuarios con contraseñas hasheadas y adjuntos,
+# así que ese directorio debe ser solo legible por el usuario que ejecuta el cron (chmod 700) y
+# conviene copiarlo cifrado a otro lugar (p. ej. rclone/restic a un almacenamiento externo).
+#
+# No hay tarea de renovación de certificados: Caddy renueva los certificados TLS por sí solo.
+
+# Respaldo diario de base de datos y adjuntos a las 02:00 (retención 7 días)
+0 2 * * * cd /opt/sigdom && ./scripts/backup-db.sh >> /opt/sigdom/backups/backup.log 2>&1
+
+# Limpieza semanal de imágenes y capas de Docker sin uso (domingo 03:00)
+0 3 * * 0 docker system prune -f >> /opt/sigdom/backups/docker-prune.log 2>&1

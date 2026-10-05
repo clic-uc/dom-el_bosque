@@ -1,0 +1,19 @@
+import { DraftBanner } from '@/features/help/DraftBanner';
+
+export const meta = { title: 'Ubicación automática', section: 'importacion', order: 4, draft: true };
+
+Al importar, la plataforma intenta ubicar cada fila en el mapa por su cuenta: usa las coordenadas del archivo
+si vienen, si no las del rol, y si no busca la dirección. Esta página explica de dónde sale cada ubicación y
+cómo revisar las que quedaron aproximadas.
+
+<DraftBanner />
+
+## Qué se explicará aquí
+
+- De dónde salen las coordenadas, en orden: **columnas del archivo**, **rol** (padrón), **dirección en el
+  padrón** y, como último recurso, el mapa base (**OpenStreetMap**).
+- Los **niveles de confianza** de una ubicación y qué significa cada uno.
+- Cómo revisar y corregir las **ubicaciones aproximadas** en la pestaña de advertencias, una por una o
+  aceptándolas todas.
+- Por qué la búsqueda en OpenStreetMap **puede tardar** (se consulta de a una dirección por segundo) y que
+  puedes confirmar la importación mientras avanza.
