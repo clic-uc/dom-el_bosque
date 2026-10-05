@@ -1,0 +1,109 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Identidad visual de la Municipalidad de El Bosque (PROMPT.md §0).
+   Los usuarios tienen baja habilidad digital: tipografía base 16px, controles grandes,
+   foco visible siempre y contraste AA en todos los pares color/texto. */
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --color-primary: #73308a;
+  --color-primary-light: #8a42a3;
+  --color-primary-dark: #5a2370;
+  --color-primary-soft: #f4ecf7;
+  --color-primary-foreground: #ffffff;
+
+  --color-secondary: #8ebb37;
+  --color-secondary-strong: #4f7a1c;
+  --color-secondary-soft: #f1f7e6;
+  --color-secondary-foreground: #1a1a1a;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Escala de z-index (PROMPT.md §3.4 punto 31). */
+  --z-index-map: 0;
+  --z-index-map-controls: 10;
+  --z-index-panel: 20;
+  --z-index-toolbar: 30;
+  --z-index-modal: 50;
+  --z-index-toast: 60;
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+  --muted: #f4f4f5;
+  --muted-foreground: #52525b;
+  --accent: #f4ecf7;
+  --accent-foreground: #5a2370;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --border: #e4e4e7;
+  --input: #d4d4d8;
+  --ring: #73308a;
+}
+
+.dark {
+  --background: #18181b;
+  --foreground: #fafafa;
+  --card: #18181b;
+  --card-foreground: #fafafa;
+  --popover: #18181b;
+  --popover-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #3b1d47;
+  --accent-foreground: #f4ecf7;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #27272a;
+  --input: #3f3f46;
+  --ring: #8a42a3;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    font-size: 16px;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+}
+
+/* MapLibre: el mapa ocupa el contenedor completo */
+.maplibregl-map {
+  width: 100%;
+  height: 100%;
+}

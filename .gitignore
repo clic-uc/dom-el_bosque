@@ -1,0 +1,35 @@
+# dependencias
+node_modules
+
+# next.js
+.next
+out
+next-env.d.ts
+
+# build
+dist-scripts
+*.tsbuildinfo
+
+# entorno
+.env
+.env.*
+!.env.example
+
+# datos locales
+storage/
+backups/
+*.log
+
+# datos personales: el padrón de roles nunca se versiona
+roles.csv
+data/roles*.csv
+
+# tests
+coverage
+playwright-report
+test-results
+e2e/.auth
+
+# sistema
+.DS_Store
+Thumbs.db

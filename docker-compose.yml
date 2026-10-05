@@ -1,0 +1,57 @@
+# Desarrollo: solo la base de datos. La app corre con `pnpm dev` y el worker con `pnpm worker`.
+# Para probar la imagen completa en local: `docker compose --profile full up --build`.
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    container_name: sigdom-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sigdom
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sigdom"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    profiles: ["full"]
+    build:
+      context: .
+      target: runner
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://postgres:password@db:5432/sigdom
+      STORAGE_DIR: /data/storage
+    ports:
+      - "3000:3000"
+    volumes:
+      - app_storage:/data/storage
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    profiles: ["full"]
+    build:
+      context: .
+      target: runner
+    command: ["node", "scripts/worker.js"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://postgres:password@db:5432/sigdom
+      STORAGE_DIR: /data/storage
+    volumes:
+      - app_storage:/data/storage
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
+  app_storage:
