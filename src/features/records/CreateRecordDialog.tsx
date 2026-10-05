@@ -1,28 +1,39 @@
 'use client';
 
 import { Loader2, MapPin, Search } from 'lucide-react';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useId, useMemo, useState } from 'react';
 import { LayerIcon } from '@/components/shared/layer-icon';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { HelpLink } from '@/features/help/HelpLink';
-import { isDuplicateConflict, useCreateRecord, useGeocode } from '@/features/map/hooks';
+import { geocodeQueryOptions, isDuplicateConflict, useCreateRecord } from '@/features/map/hooks';
 import { RoleInput } from '@/features/roles/RoleInput';
 import { errorMessage } from '@/lib/api';
 import { formatCoord, formatDate } from '@/lib/format';
 import { geocodeConfidenceLabels } from '@/shared/constants';
 import { createRecordSchema } from '@/shared/schemas/records';
 import { tryNormalizeRoleId } from '@/shared/role-id';
-import type { LayerWithCount, RecordDetail, RoleDto } from '@/shared/types';
+import type { GeocodeResult, LayerWithCount, RecordDetail, RoleDto } from '@/shared/types';
 import { coerceFieldValue, FieldInput, type FieldValue } from './FieldInput';
 
 type Props = {
-  /** El diálogo permanece montado mientras `open` sea true, aunque esté minimizado para elegir en el mapa. */
+  /**
+   * El diálogo permanece montado mientras `open` sea true, aunque esté minimizado para elegir en el mapa.
+   * El contenedor lo monta con una `key` nueva en cada apertura, así el formulario parte limpio.
+   */
   open: boolean;
   onOpenChange: (open: boolean) => void;
   layers: LayerWithCount[];
@@ -42,11 +53,24 @@ function parseCoord(s: string): number | null {
   return Number.isFinite(n) ? n : NaN;
 }
 
+const ROLE_COORDS_NOTE = 'Coordenadas del rol cargadas automáticamente.';
+
 /** Crear registro (§10.2, §8.3). */
-export function CreateRecordDialog({ open, onOpenChange, layers, defaultLayerId, pickActive, pickedLocation, onRequestPick, onOpenRecord, onCreated }: Props) {
+export function CreateRecordDialog({
+  open,
+  onOpenChange,
+  layers,
+  defaultLayerId,
+  pickActive,
+  pickedLocation,
+  onRequestPick,
+  onOpenRecord,
+  onCreated,
+}: Props) {
   const id = useId();
   const create = useCreateRecord();
-  const [layerId, setLayerId] = useState<number | null>(defaultLayerId);
+  const queryClient = useQueryClient();
+  const [layerId, setLayerId] = useState<number | null>(defaultLayerId ?? layers[0]?.id ?? null);
   const [roleId, setRoleId] = useState('');
   const [role, setRole] = useState<RoleDto | null>(null);
   const [lat, setLat] = useState('');
@@ -55,58 +79,55 @@ export function CreateRecordDialog({ open, onOpenChange, layers, defaultLayerId,
   const [attributes, setAttributes] = useState<Record<string, FieldValue>>({});
   const [comments, setComments] = useState('');
   const [address, setAddress] = useState('');
-  const [geocodeQuery, setGeocodeQuery] = useState('');
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeResult, setGeocodeResult] = useState<GeocodeResult | null | undefined>(undefined);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [duplicate, setDuplicate] = useState<{ message: string; existingRecordId: number } | null>(null);
 
   const layer = useMemo(() => layers.find((l) => l.id === layerId) ?? null, [layers, layerId]);
   const fields = useMemo(() => layer?.fields.filter((f) => f.type !== 'autonumber') ?? [], [layer]);
-  const geocode = useGeocode(geocodeQuery, open && geocodeQuery.length >= 3);
 
-  // Reinicio al abrir.
-  useEffect(() => {
-    if (!open) return;
-    setLayerId(defaultLayerId ?? layers[0]?.id ?? null);
-    setRoleId('');
-    setRole(null);
-    setLat('');
-    setLon('');
-    setCoordsNote(null);
-    setAttributes({});
-    setComments('');
-    setAddress('');
-    setGeocodeQuery('');
-    setError(null);
-    setDuplicate(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al abrir
-  }, [open]);
-
-  // Ubicación elegida en el mapa.
-  useEffect(() => {
-    if (!pickedLocation) return;
+  // Ubicación elegida en el mapa: se aplica una vez por clic (ajuste de estado durante el render).
+  const [appliedPickAt, setAppliedPickAt] = useState<number | null>(null);
+  if (pickedLocation && pickedLocation.at !== appliedPickAt) {
+    setAppliedPickAt(pickedLocation.at);
     setLat(formatCoord(pickedLocation.lat));
     setLon(formatCoord(pickedLocation.lon));
     setCoordsNote('Ubicación seleccionada en el mapa.');
-  }, [pickedLocation]);
+  }
 
-  // Rol existente con coordenadas → autocompletar (si el usuario no escribió coordenadas propias).
-  useEffect(() => {
-    if (!role || role.lat === null || role.lon === null) return;
-    if (lat.trim() && lon.trim() && coordsNote !== 'Coordenadas del rol cargadas automáticamente.') return;
-    setLat(formatCoord(role.lat));
-    setLon(formatCoord(role.lon));
-    setCoordsNote('Coordenadas del rol cargadas automáticamente.');
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reacciona solo al rol resuelto
-  }, [role]);
+  /** Rol existente con coordenadas → autocompletar, salvo que el usuario ya haya escrito coordenadas propias. */
+  function handleRoleResolved(next: RoleDto | null) {
+    setRole(next);
+    if (!next || next.lat === null || next.lon === null) return;
+    if (lat.trim() && lon.trim() && coordsNote !== ROLE_COORDS_NOTE) return;
+    setLat(formatCoord(next.lat));
+    setLon(formatCoord(next.lon));
+    setCoordsNote(ROLE_COORDS_NOTE);
+  }
 
-  // Resultado de geocodificación → coordenadas.
-  useEffect(() => {
-    const r = geocode.data;
-    if (!r) return;
-    setLat(formatCoord(r.lat));
-    setLon(formatCoord(r.lon));
-    setCoordsNote(`Ubicación por dirección: ${r.label} (${geocodeConfidenceLabels[r.confidence].toLowerCase()}).`);
-  }, [geocode.data]);
+  async function searchAddress() {
+    const q = address.trim();
+    if (q.length < 3) return;
+    setGeocoding(true);
+    setGeocodeError(null);
+    try {
+      const r = await queryClient.fetchQuery(geocodeQueryOptions(q));
+      setGeocodeResult(r);
+      if (r) {
+        setLat(formatCoord(r.lat));
+        setLon(formatCoord(r.lon));
+        setCoordsNote(
+          `Ubicación por dirección: ${r.label} (${geocodeConfidenceLabels[r.confidence].toLowerCase()}).`,
+        );
+      }
+    } catch (err) {
+      setGeocodeError(errorMessage(err));
+    } finally {
+      setGeocoding(false);
+    }
+  }
 
   function setAttr(key: string, v: FieldValue) {
     setAttributes((a) => ({ ...a, [key]: v }));
@@ -123,7 +144,9 @@ export function CreateRecordDialog({ open, onOpenChange, layers, defaultLayerId,
     const nLat = parseCoord(lat);
     const nLon = parseCoord(lon);
     if (nLat === null || nLon === null) {
-      setError('La ubicación es obligatoria: escribe latitud y longitud, selecciónala en el mapa o busca la dirección.');
+      setError(
+        'La ubicación es obligatoria: escribe latitud y longitud, selecciónala en el mapa o busca la dirección.',
+      );
       return;
     }
     if (Number.isNaN(nLat) || Number.isNaN(nLon)) {
@@ -165,14 +188,21 @@ export function CreateRecordDialog({ open, onOpenChange, layers, defaultLayerId,
       onCreated(record);
       onOpenChange(false);
     } catch (err) {
-      if (isDuplicateConflict(err)) setDuplicate({ message: err.message, existingRecordId: err.details.existingRecordId });
+      if (isDuplicateConflict(err))
+        setDuplicate({ message: err.message, existingRecordId: err.details.existingRecordId });
       else setError(errorMessage(err));
     }
   }
 
   const busy = create.isPending;
   const currentRole = tryNormalizeRoleId(roleId);
-  const geocodeRole = geocode.data?.roleId && layer?.hasRole && geocode.data.confidence === 'exact' && !(currentRole.ok && currentRole.value === geocode.data.roleId) ? geocode.data.roleId : null;
+  const geocodeRole =
+    geocodeResult?.roleId &&
+    layer?.hasRole &&
+    geocodeResult.confidence === 'exact' &&
+    !(currentRole.ok && currentRole.value === geocodeResult.roleId)
+      ? geocodeResult.roleId
+      : null;
 
   return (
     <Dialog open={open && !pickActive} onOpenChange={(o) => !busy && onOpenChange(o)}>
@@ -182,14 +212,20 @@ export function CreateRecordDialog({ open, onOpenChange, layers, defaultLayerId,
             <DialogTitle className="flex items-center gap-1 text-xl">
               Crear registro <HelpLink slug="registros/crear-y-editar" label="¿Cómo se crea un registro?" />
             </DialogTitle>
-            <DialogDescription className="text-base">Los campos con * son obligatorios. Los adjuntos se agregan después, desde el panel del registro.</DialogDescription>
+            <DialogDescription className="text-base">
+              Los campos con * son obligatorios. Los adjuntos se agregan después, desde el panel del registro.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-1.5">
             <Label htmlFor={`${id}-layer`} className="text-base">
               Capa *
             </Label>
-            <Select value={layerId ? String(layerId) : ''} onValueChange={(v) => setLayerId(Number(v))} disabled={busy}>
+            <Select
+              value={layerId ? String(layerId) : ''}
+              onValueChange={(v) => setLayerId(Number(v))}
+              disabled={busy}
+            >
               <SelectTrigger id={`${id}-layer`} className="h-11 w-full text-base">
                 <SelectValue placeholder="Elige una capa" />
               </SelectTrigger>
@@ -210,19 +246,36 @@ export function CreateRecordDialog({ open, onOpenChange, layers, defaultLayerId,
               <Label htmlFor={`${id}-role`} className="text-base">
                 Rol SII
               </Label>
-              <RoleInput id={`${id}-role`} value={roleId} onChange={setRoleId} onRoleResolved={setRole} disabled={busy} />
+              <RoleInput
+                id={`${id}-role`}
+                value={roleId}
+                onChange={setRoleId}
+                onRoleResolved={handleRoleResolved}
+                disabled={busy}
+              />
               {role && !role.vigente ? (
                 <Alert className="border-amber-300 bg-amber-50">
                   <AlertTitle className="text-amber-900">Rol no vigente</AlertTitle>
                   <AlertDescription className="text-amber-900">
                     <p>
-                      El rol {role.id} dejó de estar vigente{role.supersededAt ? ` el ${formatDate(role.supersededAt)}` : ''}
-                      {role.resultRoleIds?.length ? `; fue reemplazado por ${role.resultRoleIds.join(', ')}` : ''}. Si el permiso es nuevo, usa un rol resultante; si es antiguo, puedes continuar.
+                      El rol {role.id} dejó de estar vigente
+                      {role.supersededAt ? ` el ${formatDate(role.supersededAt)}` : ''}
+                      {role.resultRoleIds?.length
+                        ? `; fue reemplazado por ${role.resultRoleIds.join(', ')}`
+                        : ''}
+                      . Si el permiso es nuevo, usa un rol resultante; si es antiguo, puedes continuar.
                     </p>
                     {role.resultRoleIds?.length ? (
                       <div className="flex flex-wrap gap-2 pt-1">
                         {role.resultRoleIds.map((r) => (
-                          <Button key={r} type="button" variant="outline" size="lg" className="h-10 font-mono" onClick={() => setRoleId(r)}>
+                          <Button
+                            key={r}
+                            type="button"
+                            variant="outline"
+                            size="lg"
+                            className="h-10 font-mono"
+                            onClick={() => setRoleId(r)}
+                          >
                             Usar {r}
                           </Button>
                         ))}
@@ -273,7 +326,14 @@ export function CreateRecordDialog({ open, onOpenChange, layers, defaultLayerId,
               </div>
             </div>
             {coordsNote ? <p className="text-sm text-secondary-strong">{coordsNote}</p> : null}
-            <Button type="button" variant="outline" size="lg" className="w-full" onClick={onRequestPick} disabled={busy}>
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="w-full"
+              onClick={onRequestPick}
+              disabled={busy}
+            >
               <MapPin aria-hidden /> Seleccionar en el mapa
             </Button>
             <div className="space-y-1.5">
@@ -291,20 +351,38 @@ export function CreateRecordDialog({ open, onOpenChange, layers, defaultLayerId,
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      setGeocodeQuery(address.trim());
+                      void searchAddress();
                     }
                   }}
                 />
-                <Button type="button" variant="outline" size="lg" className="h-11" onClick={() => setGeocodeQuery(address.trim())} disabled={busy || address.trim().length < 3}>
-                  {geocode.isFetching ? <Loader2 className="animate-spin" aria-hidden /> : <Search aria-hidden />} Buscar
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  className="h-11"
+                  onClick={() => void searchAddress()}
+                  disabled={busy || geocoding || address.trim().length < 3}
+                >
+                  {geocoding ? <Loader2 className="animate-spin" aria-hidden /> : <Search aria-hidden />}{' '}
+                  Buscar
                 </Button>
               </div>
-              {geocodeQuery && !geocode.isFetching && geocode.data === null ? <p className="text-sm text-muted-foreground">No encontramos esa dirección. Revisa la calle y el número, o selecciona el punto en el mapa.</p> : null}
-              {geocode.isError ? <p className="text-sm text-destructive">{errorMessage(geocode.error)}</p> : null}
+              {!geocoding && geocodeResult === null ? (
+                <p className="text-sm text-muted-foreground">
+                  No encontramos esa dirección. Revisa la calle y el número, o selecciona el punto en el mapa.
+                </p>
+              ) : null}
+              {geocodeError ? <p className="text-sm text-destructive">{geocodeError}</p> : null}
               {geocodeRole ? (
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <span>La dirección corresponde al rol {geocodeRole} del padrón.</span>
-                  <Button type="button" variant="outline" size="sm" className="h-9 font-mono" onClick={() => setRoleId(geocodeRole)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 font-mono"
+                    onClick={() => setRoleId(geocodeRole)}
+                  >
                     Usar el rol {geocodeRole}
                   </Button>
                 </div>
@@ -320,20 +398,36 @@ export function CreateRecordDialog({ open, onOpenChange, layers, defaultLayerId,
                     {f.label}
                     {f.required ? ' *' : ''}
                   </Label>
-                  <FieldInput id={`${id}-${f.key}`} field={f} value={attributes[f.key] ?? (f.type === 'boolean' ? false : '')} onChange={(v) => setAttr(f.key, v)} disabled={busy} />
+                  <FieldInput
+                    id={`${id}-${f.key}`}
+                    field={f}
+                    value={attributes[f.key] ?? (f.type === 'boolean' ? false : '')}
+                    onChange={(v) => setAttr(f.key, v)}
+                    disabled={busy}
+                  />
                 </div>
               ))}
             </div>
           ) : null}
           {layer?.fields.some((f) => f.type === 'autonumber') ? (
-            <p className="text-sm text-muted-foreground">El {layer.fields.find((f) => f.type === 'autonumber')!.label} se asigna después, desde el panel del registro, cuando el permiso esté aprobado.</p>
+            <p className="text-sm text-muted-foreground">
+              El {layer.fields.find((f) => f.type === 'autonumber')!.label} se asigna después, desde el panel
+              del registro, cuando el permiso esté aprobado.
+            </p>
           ) : null}
 
           <div className="space-y-1.5">
             <Label htmlFor={`${id}-comments`} className="text-base">
               Comentarios
             </Label>
-            <Textarea id={`${id}-comments`} className="min-h-20 text-base" value={comments} onChange={(e) => setComments(e.target.value)} disabled={busy} maxLength={5000} />
+            <Textarea
+              id={`${id}-comments`}
+              className="min-h-20 text-base"
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              disabled={busy}
+              maxLength={5000}
+            />
           </div>
 
           {error ? (
@@ -363,7 +457,13 @@ export function CreateRecordDialog({ open, onOpenChange, layers, defaultLayerId,
           ) : null}
 
           <DialogFooter>
-            <Button type="button" variant="outline" size="lg" onClick={() => onOpenChange(false)} disabled={busy}>
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              onClick={() => onOpenChange(false)}
+              disabled={busy}
+            >
               Cancelar
             </Button>
             <Button type="submit" size="lg" disabled={busy || !layer}>

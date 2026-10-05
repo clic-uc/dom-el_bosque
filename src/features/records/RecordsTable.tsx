@@ -469,7 +469,7 @@ export function RecordsTable({ layer, params, onPageChange, onPageSizeChange, on
           toDelete ? (
             <div className="space-y-2">
               <p>
-                Se eliminará el registro {toDelete.roleId ? `del rol ${toDelete.roleId} ` : ''}de la capa "{layer.name}", con sus comentarios y adjuntos. Esta acción no se puede deshacer.
+                Se eliminará el registro {toDelete.roleId ? `del rol ${toDelete.roleId} ` : ''}de la capa “{layer.name}”, con sus comentarios y adjuntos. Esta acción no se puede deshacer.
               </p>
               {toDelete.numberAssignedAt ? <p className="text-amber-900">Este registro tiene un número asignado por la plataforma: solo un administrador puede eliminarlo desde su panel, indicando el motivo.</p> : null}
             </div>

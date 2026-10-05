@@ -27,7 +27,9 @@ export async function requireImport(db: DbOrTx, id: string): Promise<ImportRow> 
 export function assertOwnImport(actor: Pick<Actor, 'userId' | 'role'>, imp: Pick<ImportRow, 'userId'>): void {
   if (actor.role === 'admin') return;
   if (imp.userId !== actor.userId) {
-    throw new ForbiddenError('Esta importación la hizo otra persona. Solo quien la subió o un administrador puede modificarla.');
+    throw new ForbiddenError(
+      'Esta importación la hizo otra persona. Solo quien la subió o un administrador puede modificarla.',
+    );
   }
 }
 

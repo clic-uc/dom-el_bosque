@@ -9,7 +9,8 @@ import { env } from '@/env';
  * o `imports/<id>`. Nunca se aceptan rutas absolutas ni `..`.
  */
 
-const ROOT = path.resolve(process.cwd(), env.STORAGE_DIR);
+// En el build de Next se omite la validación de env (SKIP_ENV_VALIDATION): usamos el valor por defecto.
+const ROOT = path.resolve(process.cwd(), env.STORAGE_DIR || './storage');
 
 function resolveKey(key: string): string {
   if (!/^[a-zA-Z0-9_\-./]+$/.test(key) || key.includes('..') || key.startsWith('/')) {
@@ -65,4 +66,3 @@ export const storage = {
   },
 };
 
-export type Storage = typeof storage;

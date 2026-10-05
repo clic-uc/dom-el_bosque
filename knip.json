@@ -5,9 +5,31 @@
     "scripts/*.ts",
     "scripts/*.mjs",
     "e2e/**/*.ts",
-    "content/help/**/*.mdx"
+    "content/help/**/*.mdx",
+    "src/shared/**/*.ts",
+    "src/server/{http,errors,rate-limit}.ts",
+    "src/server/auth/session.ts",
+    "src/server/services/*.ts",
+    "src/server/geocoding/index.ts",
+    "src/db/client.ts",
+    "src/lib/*.ts",
+    "src/components/shared/*.tsx"
   ],
-  "project": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "scripts/**/*.ts", "scripts/**/*.mjs", "e2e/**/*.ts"],
-  "ignore": ["src/components/ui/**"],
-  "ignoreDependencies": ["tw-animate-css", "pino-pretty"]
+  "project": [
+    "app/**/*.{ts,tsx}",
+    "src/**/*.{ts,tsx}",
+    "content/help/**/*.ts",
+    "scripts/**/*.ts",
+    "scripts/**/*.mjs",
+    "e2e/**/*.ts"
+  ],
+  "ignore": [
+    "src/components/ui/**"
+  ],
+  "ignoreDependencies": [
+    "tw-animate-css",
+    "pino-pretty",
+    "tailwindcss"
+  ],
+  "ignoreExportsUsedInFile": true
 }

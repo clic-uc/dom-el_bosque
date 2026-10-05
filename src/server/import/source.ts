@@ -11,7 +11,11 @@ export function importFileKey(importId: string): string {
   return `imports/${importId}`;
 }
 
-export type SourceOverrides = { sheetName?: string | null; headerRow?: number | null; delimiter?: string | null };
+export type SourceOverrides = {
+  sheetName?: string | null;
+  headerRow?: number | null;
+  delimiter?: string | null;
+};
 
 /** Lee la planilla de una importación con sus opciones actuales (hoja, fila de encabezados, delimitador). */
 export async function readImportTable(

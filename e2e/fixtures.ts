@@ -72,8 +72,13 @@ export async function establishSession(page: Page, role: E2ERole): Promise<void>
 
 /** Cierra sesión desde el menú de usuario (§10.4). */
 export async function signOut(page: Page): Promise<void> {
-  await page.getByRole('button', { name: /^Menú de / }).click();
-  await page.getByRole('menuitem', { name: 'Cerrar sesión' }).click();
+  // En /map la hidratación puede llegar después del primer clic: reintentamos hasta que el menú abra.
+  const item = page.getByRole('menuitem', { name: 'Cerrar sesión' });
+  for (let attempt = 0; attempt < 5 && !(await item.isVisible().catch(() => false)); attempt++) {
+    await page.getByRole('button', { name: /^Menú de / }).click();
+    await item.waitFor({ state: 'visible', timeout: 2_000 }).catch(() => undefined);
+  }
+  await item.click();
   await expect(page).toHaveURL(/\/(\?.*)?$/);
 }
 
@@ -113,7 +118,9 @@ type RoleFixtures = {
 
 export const test = base.extend<RoleFixtures>({
   // IP de prueba distinta por test (ver uniqueTestIp). Aplica al contexto del navegador y a `page.request`.
-  extraHTTPHeaders: [async ({}, provide) => provide({ 'X-Forwarded-For': uniqueTestIp() }), { option: true }],
+  extraHTTPHeaders: async ({}, provide) => {
+    await provide({ 'X-Forwarded-For': uniqueTestIp() });
+  },
   adminPage: ({ browser }, use) => pageFor(browser, 'admin', use),
   editorPage: ({ browser }, use) => pageFor(browser, 'editor', use),
   viewerPage: ({ browser }, use) => pageFor(browser, 'viewer', use),

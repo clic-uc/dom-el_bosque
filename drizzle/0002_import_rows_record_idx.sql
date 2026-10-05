@@ -1,0 +1,1 @@
+CREATE INDEX "import_rows_record_idx" ON "import_rows" USING btree ("record_id");

@@ -93,6 +93,7 @@ export const importRows = pgTable(
   (t) => [
     primaryKey({ columns: [t.importId, t.rowNumber] }),
     index('import_rows_import_status_idx').on(t.importId, t.status),
+    index('import_rows_record_idx').on(t.recordId),
   ],
 );
 

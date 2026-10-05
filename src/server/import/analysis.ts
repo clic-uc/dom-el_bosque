@@ -6,16 +6,29 @@ import { tryNormalizeRoleId } from '@/shared/role-id';
 import type { GeocodeCandidate, GeocodeResult, RecordGeocodeInfo } from '@/shared/schemas/geocode';
 import type { ImportMessage } from '@/shared/schemas/import-rows';
 import type { ParsedRow } from '@/shared/schemas/import-rows';
-import { MAPPING_TARGETS, specialMappingTargets, type AnalyzeImportData, type ImportRowStatus } from '@/shared/schemas/imports';
+import {
+  MAPPING_TARGETS,
+  specialMappingTargets,
+  type AnalyzeImportData,
+  type ImportRowStatus,
+} from '@/shared/schemas/imports';
 import type { LayerField } from '@/shared/schemas/layers';
 import { ValidationError } from '../errors';
 import { getGeocoder, type Geocoder } from '../geocoding';
 import { normalizeAddress } from '../geocoding/normalize-address';
-import { isInsideComuna, parseCoordinatePair } from '../parsing/coordinates';
+import { parseCoordinatePair } from '../parsing/coordinates';
 import { castAttributes, isEmptyValue } from '../parsing/values';
 import { normalizeIdentitySql, normalizeIdentityValue, type LayerRow } from '../services/_shared';
 import { resolveCoordinatesForNew } from '../services/coordinates';
-import { buildIdentity, describeIdentity, findDuplicateIds, layerDetectsDuplicates, loadIdentityIndex, type Identity } from '../services/duplicates';
+import {
+  buildIdentity,
+  describeIdentity,
+  findDuplicateIds,
+  layerDetectsDuplicates,
+  loadIdentityIndex,
+  type Identity,
+} from '../services/duplicates';
+import { batchGeocodeLocal } from './padron-batch';
 import type { TableRow } from './table';
 
 /**
@@ -35,9 +48,18 @@ export type ResolvedMapping = {
   fields: { header: string; field: LayerField }[];
 };
 
-export function resolveMapping(layer: Pick<LayerRow, 'fields'>, columnMapping: Record<string, string | null>): ResolvedMapping {
+export function resolveMapping(
+  layer: Pick<LayerRow, 'fields'>,
+  columnMapping: Record<string, string | null>,
+): ResolvedMapping {
   const byKey = new Map(layer.fields.map((f) => [f.key, f]));
-  const out: ResolvedMapping = { roleHeader: null, latHeader: null, lonHeader: null, commentsHeader: null, fields: [] };
+  const out: ResolvedMapping = {
+    roleHeader: null,
+    latHeader: null,
+    lonHeader: null,
+    commentsHeader: null,
+    fields: [],
+  };
   for (const [header, target] of Object.entries(columnMapping)) {
     if (!target) continue;
     if (target === MAPPING_TARGETS.roleId) out.roleHeader = header;
@@ -53,7 +75,11 @@ export function resolveMapping(layer: Pick<LayerRow, 'fields'>, columnMapping: R
 }
 
 /** Validación del mapeo (§8.5 "Analizar" paso 1) con mensajes para mostrar tal cual en la UI. */
-export function validateMapping(layer: LayerRow, input: AnalyzeImportData, headers?: string[]): ResolvedMapping {
+export function validateMapping(
+  layer: LayerRow,
+  input: AnalyzeImportData,
+  headers?: string[],
+): ResolvedMapping {
   const byKey = new Map(layer.fields.map((f) => [f.key, f]));
   const seen = new Map<string, string>();
   const headerSet = headers ? new Set(headers) : null;
@@ -65,15 +91,21 @@ export function validateMapping(layer: LayerRow, input: AnalyzeImportData, heade
     if (!target) continue;
     const isSpecial = (specialMappingTargets as readonly string[]).includes(target);
     if (!isSpecial && !byKey.has(target)) {
-      throw new ValidationError(`El destino "${target}" de la columna "${header}" no es un campo de la capa.`);
+      throw new ValidationError(
+        `El destino "${target}" de la columna "${header}" no es un campo de la capa.`,
+      );
     }
     if (target === MAPPING_TARGETS.roleId && !layer.hasRole) {
-      throw new ValidationError(`La capa "${layer.name}" no usa Rol SII. Marca la columna "${header}" como "Ignorar".`);
+      throw new ValidationError(
+        `La capa "${layer.name}" no usa Rol SII. Marca la columna "${header}" como "Ignorar".`,
+      );
     }
     const prev = seen.get(target);
     if (prev) {
       const label = targetLabel(layer, target);
-      throw new ValidationError(`Las columnas "${prev}" y "${header}" apuntan al mismo destino (${label}). Cada destino se usa una sola vez.`);
+      throw new ValidationError(
+        `Las columnas "${prev}" y "${header}" apuntan al mismo destino (${label}). Cada destino se usa una sola vez.`,
+      );
     }
     seen.set(target, header);
   }
@@ -85,7 +117,8 @@ export function validateMapping(layer: LayerRow, input: AnalyzeImportData, heade
   }
 
   if (layer.hasRole) {
-    const addressMapped = !!layer.addressFieldKey && mapping.fields.some((f) => f.field.key === layer.addressFieldKey);
+    const addressMapped =
+      !!layer.addressFieldKey && mapping.fields.some((f) => f.field.key === layer.addressFieldKey);
     if (!mapping.roleHeader && !addressMapped) {
       const addressField = layer.addressFieldKey ? byKey.get(layer.addressFieldKey) : undefined;
       throw new ValidationError(
@@ -96,11 +129,15 @@ export function validateMapping(layer: LayerRow, input: AnalyzeImportData, heade
     }
   }
 
-  const missingRequired = layer.fields.filter((f) => f.required && !mapping.fields.some((m) => m.field.key === f.key));
+  const missingRequired = layer.fields.filter(
+    (f) => f.required && !mapping.fields.some((m) => m.field.key === f.key),
+  );
   if (missingRequired.length) {
     const labels = missingRequired.map((f) => `"${f.label}"`).join(', ');
     throw new ValidationError(
-      missingRequired.length === 1 ? `El campo requerido ${labels} no está mapeado.` : `Los campos requeridos ${labels} no están mapeados.`,
+      missingRequired.length === 1
+        ? `El campo requerido ${labels} no está mapeado.`
+        : `Los campos requeridos ${labels} no están mapeados.`,
     );
   }
 
@@ -110,22 +147,28 @@ export function validateMapping(layer: LayerRow, input: AnalyzeImportData, heade
 
   if (input.fullReplace) {
     if (!layerDetectsDuplicates(layer)) {
-      throw new ValidationError('El reemplazo completo requiere que la capa tenga campos únicos para reconocer qué registros ya existen.');
+      throw new ValidationError(
+        'El reemplazo completo requiere que la capa tenga campos únicos para reconocer qué registros ya existen.',
+      );
     }
     if (input.rowFrom || input.rowTo) {
-      throw new ValidationError('El reemplazo completo no admite un rango de filas: el archivo debe ser la capa completa.');
+      throw new ValidationError(
+        'El reemplazo completo no admite un rango de filas: el archivo debe ser la capa completa.',
+      );
     }
     const uniqueMapped = layer.uniqueKeys.every((k) => mapping.fields.some((m) => m.field.key === k));
     if (!uniqueMapped) {
       const labels = layer.uniqueKeys.map((k) => `"${byKey.get(k)?.label ?? k}"`).join(', ');
-      throw new ValidationError(`Para el reemplazo completo deben estar mapeados los campos únicos (${labels}).`);
+      throw new ValidationError(
+        `Para el reemplazo completo deben estar mapeados los campos únicos (${labels}).`,
+      );
     }
   }
 
   return mapping;
 }
 
-export function targetLabel(layer: Pick<LayerRow, 'fields'>, target: string): string {
+function targetLabel(layer: Pick<LayerRow, 'fields'>, target: string): string {
   if (target === MAPPING_TARGETS.roleId) return 'Rol SII';
   if (target === MAPPING_TARGETS.lat) return 'Latitud';
   if (target === MAPPING_TARGETS.lon) return 'Longitud';
@@ -135,7 +178,7 @@ export function targetLabel(layer: Pick<LayerRow, 'fields'>, target: string): st
 
 // ---------- contexto ----------
 
-export type RoleInfo = {
+type RoleInfo = {
   id: string;
   exists: boolean;
   lat: number | null;
@@ -152,9 +195,18 @@ export type AnalysisContext = {
   geocodeEnabled: boolean;
   getRole(roleId: string): Promise<RoleInfo>;
   geocodeLocal(address: string): Promise<GeocodeResult | null>;
-  findExistingDuplicates(identity: Identity, roleId: string | null, attributes: Record<string, unknown>): Promise<number[]>;
+  findExistingDuplicates(
+    identity: Identity,
+    roleId: string | null,
+    attributes: Record<string, unknown>,
+  ): Promise<number[]>;
   /** Primera fila anterior del archivo con la misma identidad, o null. */
-  findFileDuplicate(identity: Identity, rowNumber: number, roleId: string | null, attributes: Record<string, unknown>): Promise<number | null>;
+  findFileDuplicate(
+    identity: Identity,
+    rowNumber: number,
+    roleId: string | null,
+    attributes: Record<string, unknown>,
+  ): Promise<number | null>;
 };
 
 type RoleRowLite = { id: string; lat: number | null; lon: number | null; supersededAt: string | null };
@@ -210,7 +262,13 @@ async function loadRoleInfos(db: DbOrTx, layer: LayerRow, roleIds: string[]): Pr
   }
   const superseded = found.filter((r) => r.supersededAt !== null).map((r) => r.id);
   const results = await loadResultRoles(db, superseded);
-  const counts = layerDetectsDuplicates(layer) ? new Map<string, number>() : await loadRoleCounts(db, layer.id, found.map((r) => r.id));
+  const counts = layerDetectsDuplicates(layer)
+    ? new Map<string, number>()
+    : await loadRoleCounts(
+        db,
+        layer.id,
+        found.map((r) => r.id),
+      );
   for (const r of found) {
     map.set(r.id, {
       id: r.id,
@@ -223,38 +281,18 @@ async function loadRoleInfos(db: DbOrTx, layer: LayerRow, roleIds: string[]): Pr
     });
   }
   for (const id of unique) {
-    if (!map.has(id)) map.set(id, { id, exists: false, lat: null, lon: null, supersededAt: null, resultRoleIds: [], recordCount: 0 });
+    if (!map.has(id))
+      map.set(id, {
+        id,
+        exists: false,
+        lat: null,
+        lon: null,
+        supersededAt: null,
+        resultRoleIds: [],
+        recordCount: 0,
+      });
   }
   return map;
-}
-
-type ExactHit = { id: string; lat: number; lon: number; address: string | null };
-
-/** Resuelve de una vez las direcciones con calle y número que calzan exacto con el padrón (evita 2–3 consultas por fila). */
-async function prefetchExactAddresses(db: DbOrTx, addresses: string[]): Promise<Map<string, ExactHit>> {
-  const pairs = new Map<string, { street: string; number: number }>();
-  for (const a of addresses) {
-    const n = normalizeAddress(a);
-    if (n.streetNorm && n.houseNumber !== null) pairs.set(`${n.streetNorm}|${n.houseNumber}`, { street: n.streetNorm, number: n.houseNumber });
-  }
-  const out = new Map<string, ExactHit>();
-  for (const part of chunk([...pairs.values()], 2000)) {
-    const values = sql.join(
-      part.map((p) => sql`(${p.street}, ${p.number}::int)`),
-      sql`, `,
-    );
-    const rows = await db.execute<{ id: string; lat: number; lon: number; address: string | null; street_norm: string; house_number: number }>(sql`
-      SELECT DISTINCT ON (r.street_norm, r.house_number) r.id, r.lat, r.lon, r.address, r.street_norm, r.house_number
-      FROM roles r
-      JOIN (VALUES ${values}) AS v(street, number) ON v.street = r.street_norm AND v.number = r.house_number
-      WHERE r.lat IS NOT NULL
-      ORDER BY r.street_norm, r.house_number, r.id
-    `);
-    for (const r of rows) {
-      out.set(`${r.street_norm}|${Number(r.house_number)}`, { id: r.id, lat: Number(r.lat), lon: Number(r.lon), address: r.address });
-    }
-  }
-  return out;
 }
 
 export type BulkContextOptions = {
@@ -281,15 +319,31 @@ export async function createBulkContext(
   }
   const roleCache = await loadRoleInfos(db, layer, roleIds);
 
-  const addressField = layer.addressFieldKey ? mapping.fields.find((f) => f.field.key === layer.addressFieldKey) : undefined;
+  // Solo se geocodifican las direcciones de las filas que lo van a necesitar (§8.3): sin coordenadas propias
+  // y sin un rol con coordenadas. Así un archivo con 40k roles ubicados no consulta el padrón 40k veces.
+  const addressField = layer.addressFieldKey
+    ? mapping.fields.find((f) => f.field.key === layer.addressFieldKey)
+    : undefined;
   const addresses: string[] = [];
   if (geocodeEnabled && addressField) {
     for (const r of rows) {
       const a = r.values[addressField.header]?.trim();
-      if (a) addresses.push(a);
+      if (!a) continue;
+      if (mapping.latHeader && mapping.lonHeader) {
+        const pair = parseCoordinatePair(r.values[mapping.latHeader], r.values[mapping.lonHeader]);
+        if (pair.ok && pair.lat !== null) continue;
+      }
+      if (mapping.roleHeader) {
+        const n = tryNormalizeRoleId(r.values[mapping.roleHeader]);
+        const role = n.ok && n.value ? roleCache.get(n.value) : undefined;
+        if (role && role.lat !== null && role.lon !== null) continue;
+      }
+      addresses.push(a);
     }
   }
-  const exact = addresses.length ? await prefetchExactAddresses(db, addresses) : new Map<string, ExactHit>();
+  const local = addresses.length
+    ? await batchGeocodeLocal(db, addresses)
+    : new Map<string, GeocodeResult | null>();
   const geocodeCache = new Map<string, Promise<GeocodeResult | null>>();
 
   const identityIndex = await loadIdentityIndex(db, layer);
@@ -310,15 +364,10 @@ export async function createBulkContext(
     geocodeLocal(address) {
       const n = normalizeAddress(address);
       if (!n.addressNorm) return Promise.resolve(null);
+      if (local.has(n.addressNorm)) return Promise.resolve(local.get(n.addressNorm) ?? null);
       const cached = geocodeCache.get(n.addressNorm);
       if (cached) return cached;
-      let p: Promise<GeocodeResult | null>;
-      const hit = n.streetNorm && n.houseNumber !== null ? exact.get(`${n.streetNorm}|${n.houseNumber}`) : undefined;
-      if (hit && isInsideComuna(hit.lat, hit.lon)) {
-        p = Promise.resolve({ lat: hit.lat, lon: hit.lon, provider: 'padron', confidence: 'exact', roleId: hit.id, label: hit.address ?? address });
-      } else {
-        p = geocoder.geocodeLocal(address).catch(() => null);
-      }
+      const p = geocoder.geocodeLocal(address).catch(() => null);
       geocodeCache.set(n.addressNorm, p);
       return p;
     },
@@ -358,9 +407,15 @@ export function createIncrementalContext(
       return info;
     },
     geocodeLocal: (address) => geocoder.geocodeLocal(address).catch(() => null),
-    findExistingDuplicates: (identity, roleId, attributes) => findDuplicateIds(db, layer, identity, undefined, roleId, attributes),
+    findExistingDuplicates: (identity, roleId, attributes) =>
+      findDuplicateIds(db, layer, identity, undefined, roleId, attributes),
     async findFileDuplicate(identity, rowNumber, roleId, attributes) {
-      const conds = [eq(importRows.importId, importId), ne(importRows.rowNumber, rowNumber), ne(importRows.status, 'excluded'), isNotNull(importRows.parsed)];
+      const conds = [
+        eq(importRows.importId, importId),
+        ne(importRows.rowNumber, rowNumber),
+        ne(importRows.status, 'excluded'),
+        isNotNull(importRows.parsed),
+      ];
       if (layer.hasRole) conds.push(sql`${importRows.parsed}->>'roleId' = ${roleId ?? ''}`);
       for (const k of layer.uniqueKeys) {
         const norm = normalizeIdentityValue(attributes[k]);
@@ -372,7 +427,9 @@ export function createIncrementalContext(
         .where(and(...conds))
         .limit(2000);
       const matches = candidates
-        .filter((c) => c.parsed && buildIdentity(layer, c.parsed.roleId, c.parsed.attributes)?.key === identity.key)
+        .filter(
+          (c) => c.parsed && buildIdentity(layer, c.parsed.roleId, c.parsed.attributes)?.key === identity.key,
+        )
         .map((c) => c.rowNumber)
         .filter((n) => n < rowNumber)
         .sort((a, b) => a - b);
@@ -402,8 +459,12 @@ export type RowAnalysis = {
   address: string | null;
 };
 
-const msg = (level: ImportMessage['level'], code: ImportMessage['code'], message: string, data?: Record<string, unknown>): ImportMessage =>
-  data ? { level, code, message, data } : { level, code, message };
+const msg = (
+  level: ImportMessage['level'],
+  code: ImportMessage['code'],
+  message: string,
+  data?: Record<string, unknown>,
+): ImportMessage => (data ? { level, code, message, data } : { level, code, message });
 
 export function statusFromMessages(messages: ImportMessage[], isDuplicate: boolean): ImportRowStatus {
   if (messages.some((m) => m.level === 'error')) return 'error';
@@ -414,7 +475,15 @@ export function statusFromMessages(messages: ImportMessage[], isDuplicate: boole
 
 function toCandidates(result: GeocodeResult): GeocodeCandidate[] {
   if (result.candidates?.length) return result.candidates;
-  return [{ lat: result.lat, lon: result.lon, label: result.label, roleId: result.roleId ?? null, confidence: result.confidence }];
+  return [
+    {
+      lat: result.lat,
+      lon: result.lon,
+      label: result.label,
+      roleId: result.roleId ?? null,
+      confidence: result.confidence,
+    },
+  ];
 }
 
 export function locationApproxMessage(result: GeocodeResult): ImportMessage {
@@ -422,7 +491,12 @@ export function locationApproxMessage(result: GeocodeResult): ImportMessage {
     'warning',
     'location_approx',
     `Ubicación aproximada (${geocodeConfidenceLabels[result.confidence].toLowerCase()}): ${result.label}. Acéptala o elige otra.`,
-    { candidates: toCandidates(result), label: result.label, confidence: result.confidence, provider: result.provider },
+    {
+      candidates: toCandidates(result),
+      label: result.label,
+      confidence: result.confidence,
+      provider: result.provider,
+    },
   );
 }
 
@@ -432,12 +506,20 @@ export const LOCATION_MISSING_MESSAGE: ImportMessage = msg(
   'Sin ubicación: el registro aparecerá en la tabla, pero no en el mapa.',
 );
 
-export const LOCATION_PENDING_MESSAGE: ImportMessage = msg('warning', 'location_pending', 'Buscando la dirección en OpenStreetMap…');
+const LOCATION_PENDING_MESSAGE: ImportMessage = msg(
+  'warning',
+  'location_pending',
+  'Buscando la dirección en OpenStreetMap…',
+);
 
-export function roleMessages(role: RoleInfo, layer: LayerRow): ImportMessage[] {
+function roleMessages(role: RoleInfo, layer: LayerRow): ImportMessage[] {
   const out: ImportMessage[] = [];
   if (!role.exists) {
-    out.push(msg('warning', 'role_new', `El rol ${role.id} no está en el padrón. Se creará al importar.`, { roleId: role.id }));
+    out.push(
+      msg('warning', 'role_new', `El rol ${role.id} no está en el padrón. Se creará al importar.`, {
+        roleId: role.id,
+      }),
+    );
   }
   if (role.supersededAt) {
     const results = role.resultRoleIds;
@@ -472,7 +554,7 @@ export function isRawOverrideKey(key: string): boolean {
 }
 
 /** Valores fijados a mano guardados en `raw` (persisten entre re-análisis). */
-export function overridesFromRaw(raw: Record<string, string>): RowOverrides {
+function overridesFromRaw(raw: Record<string, string>): RowOverrides {
   const out: RowOverrides = {};
   if (raw[RAW_OVERRIDE_KEYS.roleId] !== undefined) out.roleId = raw[RAW_OVERRIDE_KEYS.roleId] || null;
   const lat = raw[RAW_OVERRIDE_KEYS.lat];
@@ -505,7 +587,11 @@ export async function analyzeRow(
     const n = tryNormalizeRoleId(value);
     if (!n.ok) {
       messages.push(
-        msg('error', 'role_invalid', `Rol "${value.trim()}": debe ser dos grupos de números separados por guion, por ejemplo 04631-00030.`),
+        msg(
+          'error',
+          'role_invalid',
+          `Rol "${value.trim()}": debe ser dos grupos de números separados por guion, por ejemplo 04631-00030.`,
+        ),
       );
     } else roleId = n.value;
   }
@@ -521,7 +607,11 @@ export async function analyzeRow(
       own = { lat: pair.lat, lon: pair.lon };
       if (pair.warning) {
         messages.push(
-          msg('warning', 'coords_outside_comuna', 'Las coordenadas quedan fuera de la comuna de El Bosque. Se importarán igual; revisa que no estén invertidas.'),
+          msg(
+            'warning',
+            'coords_outside_comuna',
+            'Las coordenadas quedan fuera de la comuna de El Bosque. Se importarán igual; revisa que no estén invertidas.',
+          ),
         );
       }
     }
@@ -535,14 +625,23 @@ export async function analyzeRow(
   for (const e of cast.errors) {
     errorKeys.add(e.key);
     const field = layer.fields.find((f) => f.key === e.key);
-    messages.push(msg('error', field?.type === 'autonumber' ? 'autonumber_invalid' : 'type_invalid', `${e.label}: ${e.message}.`, { key: e.key }));
+    messages.push(
+      msg(
+        'error',
+        field?.type === 'autonumber' ? 'autonumber_invalid' : 'type_invalid',
+        `${e.label}: ${e.message}.`,
+        { key: e.key },
+      ),
+    );
   }
 
   // 4. requeridos
   for (const f of layer.fields) {
     if (!f.required || errorKeys.has(f.key)) continue;
     if (isEmptyValue(cast.attributes[f.key])) {
-      messages.push(msg('error', 'required_missing', `Falta el campo obligatorio "${f.label}".`, { key: f.key }));
+      messages.push(
+        msg('error', 'required_missing', `Falta el campo obligatorio "${f.label}".`, { key: f.key }),
+      );
     }
   }
 
@@ -580,9 +679,14 @@ export async function analyzeRow(
   if (resolved.roleAssignedByAddress) {
     parsed.roleId = resolved.roleAssignedByAddress;
     messages.push(
-      msg('warning', 'role_assigned_by_address', `Rol ${parsed.roleId} asignado por la dirección (coincide exacto con el padrón).`, {
-        roleId: parsed.roleId,
-      }),
+      msg(
+        'warning',
+        'role_assigned_by_address',
+        `Rol ${parsed.roleId} asignado por la dirección (coincide exacto con el padrón).`,
+        {
+          roleId: parsed.roleId,
+        },
+      ),
     );
     role = await ctx.getRole(parsed.roleId);
     messages.push(...roleMessages(role, layer));
@@ -599,9 +703,14 @@ export async function analyzeRow(
       if (layer.hasRole && !roleId && gr.provider === 'padron' && gr.roleId) {
         parsed.suggestedRoleId = gr.roleId;
         messages.push(
-          msg('warning', 'role_suggested_by_address', `La dirección se parece a la del rol ${gr.roleId}. Acéptalo si corresponde.`, {
-            roleId: gr.roleId,
-          }),
+          msg(
+            'warning',
+            'role_suggested_by_address',
+            `La dirección se parece a la del rol ${gr.roleId}. Acéptalo si corresponde.`,
+            {
+              roleId: gr.roleId,
+            },
+          ),
         );
       }
     }
@@ -627,9 +736,14 @@ export async function analyzeRow(
         .filter(([, v]) => v === '')
         .map(([k]) => k);
       messages.push(
-        msg('warning', 'unique_keys_incomplete', `Faltan datos para comparar con los registros existentes (${missing.join(', ')}).`, {
-          missing,
-        }),
+        msg(
+          'warning',
+          'unique_keys_incomplete',
+          `Faltan datos para comparar con los registros existentes (${missing.join(', ')}).`,
+          {
+            missing,
+          },
+        ),
       );
     } else {
       duplicateOf = await ctx.findExistingDuplicates(identity, parsed.roleId, parsed.attributes);
@@ -648,9 +762,14 @@ export async function analyzeRow(
       }
       if (fileDuplicateOf !== null) {
         messages.push(
-          msg('warning', 'duplicate_in_file', `Repetido en el archivo: la fila ${fileDuplicateOf} también tiene ${describeIdentity(identity)}.`, {
-            rowNumber: fileDuplicateOf,
-          }),
+          msg(
+            'warning',
+            'duplicate_in_file',
+            `Repetido en el archivo: la fila ${fileDuplicateOf} también tiene ${describeIdentity(identity)}.`,
+            {
+              rowNumber: fileDuplicateOf,
+            },
+          ),
         );
       }
     }
@@ -696,6 +815,8 @@ export function applyLocation(
     geocode: location.geocode,
     suggestedLocation: null,
   };
-  const filtered = messages.filter((m) => m.code !== 'location_approx' && m.code !== 'location_missing' && m.code !== 'location_pending');
+  const filtered = messages.filter(
+    (m) => m.code !== 'location_approx' && m.code !== 'location_missing' && m.code !== 'location_pending',
+  );
   return { parsed: next, messages: filtered };
 }

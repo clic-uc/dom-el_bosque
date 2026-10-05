@@ -209,15 +209,15 @@ export function usePolygonDetail(id: number | null): UseQueryResult<PolygonDetai
   });
 }
 
-export function useGeocode(q: string, enabled = true): UseQueryResult<GeocodeResult | null> {
+/** Opciones de la consulta de geocodificación puntual (§8.7), para `queryClient.fetchQuery` desde un handler. */
+export function geocodeQueryOptions(q: string) {
   const term = q.trim();
-  return useQuery({
+  return {
     queryKey: queryKeys.geocode.query(term),
     queryFn: () => api<GeocodeResult | null>('/api/geocode', { query: { q: term } }),
-    enabled: enabled && term.length >= 3,
     staleTime: 5 * 60_000,
     retry: false,
-  });
+  };
 }
 
 // ---------- mutaciones ----------

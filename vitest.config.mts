@@ -24,6 +24,8 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
+          // Los tests de servicios comparten una BD real y hacen TRUNCATE: no pueden correr en paralelo entre archivos.
+          fileParallelism: false,
           include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
           exclude: ['src/features/**', 'src/components/**'],
         },

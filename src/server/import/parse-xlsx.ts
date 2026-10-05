@@ -36,14 +36,18 @@ export async function parseXlsx(
   try {
     all = await readXlsxFile(buffer);
   } catch {
-    throw new ValidationError('No pudimos leer el archivo Excel. Guárdalo como .xlsx desde Excel e intenta de nuevo.');
+    throw new ValidationError(
+      'No pudimos leer el archivo Excel. Guárdalo como .xlsx desde Excel e intenta de nuevo.',
+    );
   }
   const sheets = all.map((s) => s.sheet);
   if (sheets.length === 0) throw new ValidationError('El archivo Excel no tiene hojas.');
 
   const target = opts.sheetName ? all.find((s) => s.sheet === opts.sheetName) : all[0];
   if (!target) {
-    throw new ValidationError(`La hoja "${opts.sheetName}" no existe. Hojas disponibles: ${sheets.join(', ')}.`);
+    throw new ValidationError(
+      `La hoja "${opts.sheetName}" no existe. Hojas disponibles: ${sheets.join(', ')}.`,
+    );
   }
   const records = target.data as unknown[][];
   if (records.length === 0) throw new ValidationError(`La hoja "${target.sheet}" está vacía.`);

@@ -33,3 +33,7 @@ e2e/.auth
 # sistema
 .DS_Store
 Thumbs.db
+
+# worker de MapLibre copiado desde node_modules (scripts/copy-maplibre-worker.mjs)
+public/maplibre-gl-worker.mjs
+public/maplibre-gl-shared.mjs

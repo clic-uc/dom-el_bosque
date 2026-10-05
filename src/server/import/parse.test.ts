@@ -7,12 +7,18 @@ import { checkHeaders, columnLetter, detectHeaderRow } from './table';
 
 describe('parseCsv (§8.5 paso 2)', () => {
   it('decodifica Windows-1252 con acentos y autodetecta ";"', () => {
-    const buf = csvBuffer(['Rol', 'Dirección', 'Año'], [['4631-30', 'José Miguel Carrera 1234', 2024]], { delimiter: ';', encoding: 'win1252' });
+    const buf = csvBuffer(['Rol', 'Dirección', 'Año'], [['4631-30', 'José Miguel Carrera 1234', 2024]], {
+      delimiter: ';',
+      encoding: 'win1252',
+    });
     expect(decodeCsvBuffer(buf)).toContain('Dirección');
     const t = parseCsv(buf);
     expect(t.delimiter).toBe(';');
     expect(t.headers).toEqual(['Rol', 'Dirección', 'Año']);
-    expect(t.rows[0]).toEqual({ rowNumber: 2, values: { Rol: '4631-30', Dirección: 'José Miguel Carrera 1234', Año: '2024' } });
+    expect(t.rows[0]).toEqual({
+      rowNumber: 2,
+      values: { Rol: '4631-30', Dirección: 'José Miguel Carrera 1234', Año: '2024' },
+    });
   });
 
   it('quita el BOM, respeta comillas con saltos de línea y conserva la numeración de filas vacías', () => {
@@ -35,8 +41,12 @@ describe('parseCsv (§8.5 paso 2)', () => {
   });
 
   it('rechaza encabezados repetidos o vacíos indicando cuáles', () => {
-    expect(() => parseCsv(Buffer.from('Rol;Rol;Monto\n1;2;3\n'), { headerRow: 1 })).toThrow(/repetidos: "Rol"/);
-    expect(() => parseCsv(Buffer.from('Rol;;Monto\n1;2;3\n'), { headerRow: 1 })).toThrow(/columna B no tiene nombre/);
+    expect(() => parseCsv(Buffer.from('Rol;Rol;Monto\n1;2;3\n'), { headerRow: 1 })).toThrow(
+      /repetidos: "Rol"/,
+    );
+    expect(() => parseCsv(Buffer.from('Rol;;Monto\n1;2;3\n'), { headerRow: 1 })).toThrow(
+      /columna B no tiene nombre/,
+    );
     expect(() => parseCsv(Buffer.from(''))).toThrow(ValidationError);
   });
 

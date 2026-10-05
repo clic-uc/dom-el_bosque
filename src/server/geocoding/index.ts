@@ -123,5 +123,3 @@ export function setGeocoder(geocoder: Geocoder | null): void {
   globalThis.__sigdomGeocoder = geocoder ?? undefined;
 }
 
-export { normalizeAddress };
-export type { GeocodeProvider, GeocodeProviderName };

@@ -17,7 +17,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['scripts/**/*.ts', 'e2e/**/*.ts', 'playwright.config.ts'],
+    files: ['scripts/**/*.{ts,mjs}', 'e2e/**/*.ts', 'playwright.config.ts'],
     rules: { 'no-console': 'off' },
   },
   globalIgnores([
@@ -26,6 +26,7 @@ export default defineConfig([
     'build/**',
     'next-env.d.ts',
     'dist-scripts/**',
+    'public/**',
     'storage/**',
     'drizzle/**',
     'playwright-report/**',

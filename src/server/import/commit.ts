@@ -17,14 +17,19 @@ import { getAutonumberField } from '../services/numbering';
 import { ensureRoles } from '../services/roles';
 import { storage } from '../storage';
 import { resolveMapping } from './analysis';
-import { pendingGeocodeOf } from './analyze';
+import { pendingGeocodeOf, withProgress } from './analyze';
 import { assertOwnImport, jsonify, requireImport, workerActor } from './service';
 import type { ImportRow } from './source';
 
 type ImportRowRecord = typeof importRows.$inferSelect;
 
 /** `POST /api/imports/:id/commit` (§8.5 "Confirmar" paso 1). */
-export async function startCommit(db: DbOrTx, actor: Actor, id: string, input: { acceptPendingGeocode: boolean }): Promise<void> {
+export async function startCommit(
+  db: DbOrTx,
+  actor: Actor,
+  id: string,
+  input: { acceptPendingGeocode: boolean },
+): Promise<void> {
   const imp = await requireImport(db, id);
   assertOwnImport(actor, imp);
   if (imp.status !== 'REVIEW') {
@@ -39,7 +44,9 @@ export async function startCommit(db: DbOrTx, actor: Actor, id: string, input: {
   const [unresolved] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(importRows)
-    .where(and(eq(importRows.importId, id), eq(importRows.status, 'duplicate'), isNull(importRows.resolution)));
+    .where(
+      and(eq(importRows.importId, id), eq(importRows.status, 'duplicate'), isNull(importRows.resolution)),
+    );
   const n = Number(unresolved?.n ?? 0);
   if (n > 0) {
     throw new ConflictError(
@@ -56,7 +63,11 @@ export async function startCommit(db: DbOrTx, actor: Actor, id: string, input: {
   }
   await db
     .update(imports)
-    .set({ status: 'COMMITTING', progress: { phase: 'queued', done: 0, total: 0, pendingGeocode: 0 }, errorMessage: null })
+    .set({
+      status: 'COMMITTING',
+      progress: withProgress(imp, { phase: 'queued', done: 0, total: 0, pendingGeocode: 0 }),
+      errorMessage: null,
+    })
     .where(eq(imports.id, id));
   await enqueue('import.commit', { importId: id });
 }
@@ -82,12 +93,42 @@ function planRow(row: ImportRowRecord): Plan | 'skipped' | 'failed' {
   return { kind: 'insert', row, parsed: row.parsed };
 }
 
-const jsonbOrNull = (v: unknown) => (v === null || v === undefined ? sql`NULL::jsonb` : sql`${JSON.stringify(v)}::jsonb`);
+/** INSERT de registros con un solo parámetro JSON; devuelve los ids en el orden de entrada. */
+async function insertRecordsBatch(
+  tx: DbOrTx,
+  layerId: number,
+  userId: string,
+  rows: ParsedRow[],
+): Promise<{ id: number }[]> {
+  const payload = JSON.stringify(
+    rows.map((p) => ({
+      role_id: p.roleId,
+      lat: p.lat,
+      lon: p.lon,
+      coords_source: p.coordsSource,
+      geocode: p.geocode,
+      attributes: p.attributes,
+      comments: p.comments ?? null,
+    })),
+  );
+  const result = await tx.execute<{ id: number }>(sql`
+    INSERT INTO records (layer_id, role_id, lat, lon, coords_source, geocode, attributes, comments, created_by, updated_by)
+    SELECT ${layerId}::int, r.role_id, r.lat, r.lon, r.coords_source::coords_source, r.geocode, r.attributes, r.comments, ${userId}, ${userId}
+    FROM jsonb_to_recordset(${payload}::jsonb) AS r(
+      role_id varchar, lat double precision, lon double precision, coords_source text, geocode jsonb, attributes jsonb, comments text
+    )
+    RETURNING id
+  `);
+  return result.map((r) => ({ id: Number(r.id) }));
+}
+
+const jsonbOrNull = (v: unknown) =>
+  v === null || v === undefined ? sql`NULL::jsonb` : sql`${JSON.stringify(v)}::jsonb`;
 
 type RoleCoords = { lat: number | null; lon: number | null };
 
 /** Mezcla un registro existente con la fila importada (§8.5 "Confirmar" paso 2, actualizar en el lugar). */
-export function mergeForUpdate(
+function mergeForUpdate(
   layer: LayerRow,
   imp: Pick<ImportRow, 'keepExistingOnEmpty'>,
   mappedKeys: string[],
@@ -106,14 +147,22 @@ export function mergeForUpdate(
 } {
   const roleId = parsed.roleId ?? existing.roleId;
 
-  let coords = { lat: existing.lat, lon: existing.lon, coordsSource: existing.coordsSource, geocode: existing.geocode };
+  let coords = {
+    lat: existing.lat,
+    lon: existing.lon,
+    coordsSource: existing.coordsSource,
+    geocode: existing.geocode,
+  };
   if (parsed.coordsSource === 'own' && parsed.lat !== null && parsed.lon !== null) {
     coords = { lat: parsed.lat, lon: parsed.lon, coordsSource: 'own', geocode: null };
   } else if (existing.lat === null && parsed.lat !== null && parsed.lon !== null) {
     coords = { lat: parsed.lat, lon: parsed.lon, coordsSource: parsed.coordsSource, geocode: parsed.geocode };
   } else if (roleId !== existing.roleId) {
     const rc = roleId ? roleCoordsOf(roleId) : null;
-    const next = applyRoleChange(coords, roleId ? { id: roleId, lat: rc?.lat ?? null, lon: rc?.lon ?? null } : null);
+    const next = applyRoleChange(
+      coords,
+      roleId ? { id: roleId, lat: rc?.lat ?? null, lon: rc?.lon ?? null } : null,
+    );
     coords = { lat: next.lat, lon: next.lon, coordsSource: next.coordsSource, geocode: next.geocode };
   }
   if (coords.coordsSource === 'role' && !roleId) coords = { ...coords, coordsSource: 'own', geocode: null };
@@ -157,7 +206,11 @@ export async function runCommit(db: DbOrTx, importId: string, deps: CommitDeps =
     const mappedKeys = mapping.fields.map((f) => f.field.key);
     const commentsMapped = mapping.commentsHeader !== null;
 
-    const rows = await db.select().from(importRows).where(eq(importRows.importId, importId)).orderBy(asc(importRows.rowNumber));
+    const rows = await db
+      .select()
+      .from(importRows)
+      .where(eq(importRows.importId, importId))
+      .orderBy(asc(importRows.rowNumber));
     const plans: Plan[] = [];
     for (const row of rows) {
       const p = planRow(row);
@@ -169,12 +222,21 @@ export async function runCommit(db: DbOrTx, importId: string, deps: CommitDeps =
     const removals = await db
       .select()
       .from(importRemovals)
-      .where(and(eq(importRemovals.importId, importId), eq(importRemovals.resolution, 'delete'), eq(importRemovals.deletable, true)));
+      .where(
+        and(
+          eq(importRemovals.importId, importId),
+          eq(importRemovals.resolution, 'delete'),
+          eq(importRemovals.deletable, true),
+        ),
+      );
 
     const total = plans.length + removals.length;
     let done = 0;
     const setProgress = (phase: string) =>
-      db.update(imports).set({ progress: { phase, done, total, pendingGeocode: 0 } }).where(eq(imports.id, importId));
+      db
+        .update(imports)
+        .set({ progress: withProgress(imp, { phase, done, total, pendingGeocode: 0 }) })
+        .where(eq(imports.id, importId));
     await setProgress('writing');
 
     // Roles nuevos en lote (§3.3 punto 18) y coordenadas actuales de los roles involucrados.
@@ -183,7 +245,10 @@ export async function runCommit(db: DbOrTx, importId: string, deps: CommitDeps =
     const roleCoords = new Map<string, RoleCoords>();
     for (let i = 0; i < roleIds.length; i += 5000) {
       const part = roleIds.slice(i, i + 5000);
-      const found = await db.select({ id: roles.id, lat: roles.lat, lon: roles.lon }).from(roles).where(inArray(roles.id, part));
+      const found = await db
+        .select({ id: roles.id, lat: roles.lat, lon: roles.lon })
+        .from(roles)
+        .where(inArray(roles.id, part));
       for (const r of found) roleCoords.set(r.id, { lat: r.lat, lon: r.lon });
     }
 
@@ -194,34 +259,34 @@ export async function runCommit(db: DbOrTx, importId: string, deps: CommitDeps =
           const inserts = batch.filter((p): p is Extract<Plan, { kind: 'insert' }> => p.kind === 'insert');
           const updates = batch.filter((p): p is Extract<Plan, { kind: 'update' }> => p.kind === 'update');
 
-          const rowLinks: { rowNumber: number; recordId: number; action: 'created' | 'updated'; snapshot: unknown }[] = [];
+          const rowLinks: {
+            rowNumber: number;
+            recordId: number;
+            action: 'created' | 'updated';
+            snapshot: unknown;
+          }[] = [];
 
           if (inserts.length) {
-            const inserted = await tx
-              .insert(records)
-              .values(
-                inserts.map((p) => ({
-                  layerId: layer.id,
-                  roleId: p.parsed.roleId,
-                  lat: p.parsed.lat,
-                  lon: p.parsed.lon,
-                  coordsSource: p.parsed.coordsSource,
-                  geocode: p.parsed.geocode,
-                  attributes: p.parsed.attributes,
-                  comments: p.parsed.comments ?? null,
-                  createdBy: imp.userId,
-                  updatedBy: imp.userId,
-                })),
-              )
-              .returning({ id: records.id });
+            const inserted = await insertRecordsBatch(
+              tx,
+              layer.id,
+              imp.userId,
+              inserts.map((p) => p.parsed),
+            );
             inserts.forEach((p, idx) => {
-              rowLinks.push({ rowNumber: p.row.rowNumber, recordId: inserted[idx]!.id, action: 'created', snapshot: null });
+              rowLinks.push({
+                rowNumber: p.row.rowNumber,
+                recordId: inserted[idx]!.id,
+                action: 'created',
+                snapshot: null,
+              });
             });
             // El rol adopta las coordenadas propias del registro si no tenía (§8.3), una vez por rol.
             const adopted = new Set<string>();
             for (const p of inserts) {
               const rid = p.parsed.roleId;
-              if (!rid || p.parsed.coordsSource !== 'own' || p.parsed.lat === null || p.parsed.lon === null) continue;
+              if (!rid || p.parsed.coordsSource !== 'own' || p.parsed.lat === null || p.parsed.lon === null)
+                continue;
               const rc = roleCoords.get(rid);
               if (rc && rc.lat !== null) continue;
               if (adopted.has(rid)) continue;
@@ -234,16 +299,32 @@ export async function runCommit(db: DbOrTx, importId: string, deps: CommitDeps =
 
           if (updates.length) {
             const targetIds = [...new Set(updates.map((u) => u.targetId))];
-            const existingRows = await tx.select(recordColumns).from(records).where(inArray(records.id, targetIds));
+            const existingRows = await tx
+              .select(recordColumns)
+              .from(records)
+              .where(inArray(records.id, targetIds));
             const byId = new Map(existingRows.map((r) => [r.id, r]));
-            const merged: { id: number; set: ReturnType<typeof mergeForUpdate>; snapshot: RecordRowNoGeom; rowNumber: number }[] = [];
+            const merged: {
+              id: number;
+              set: ReturnType<typeof mergeForUpdate>;
+              snapshot: RecordRowNoGeom;
+              rowNumber: number;
+            }[] = [];
             for (const u of updates) {
               const existing = byId.get(u.targetId);
               if (!existing || existing.layerId !== layer.id) {
                 counts.skipped++;
                 continue;
               }
-              const set = mergeForUpdate(layer, imp, mappedKeys, commentsMapped, existing, u.parsed, (rid) => roleCoords.get(rid) ?? null);
+              const set = mergeForUpdate(
+                layer,
+                imp,
+                mappedKeys,
+                commentsMapped,
+                existing,
+                u.parsed,
+                (rid) => roleCoords.get(rid) ?? null,
+              );
               merged.push({ id: existing.id, set, snapshot: existing, rowNumber: u.row.rowNumber });
             }
             if (merged.length) {
@@ -262,14 +343,22 @@ export async function runCommit(db: DbOrTx, importId: string, deps: CommitDeps =
                 WHERE r.id = v.id
               `);
               for (const m of merged) {
-                rowLinks.push({ rowNumber: m.rowNumber, recordId: m.id, action: 'updated', snapshot: jsonify(m.snapshot) });
+                rowLinks.push({
+                  rowNumber: m.rowNumber,
+                  recordId: m.id,
+                  action: 'updated',
+                  snapshot: jsonify(m.snapshot),
+                });
               }
             }
           }
 
           if (rowLinks.length) {
             const values = sql.join(
-              rowLinks.map((l) => sql`(${l.rowNumber}::int, ${l.recordId}::int, ${l.action}::import_row_action, ${jsonbOrNull(l.snapshot)})`),
+              rowLinks.map(
+                (l) =>
+                  sql`(${l.rowNumber}::int, ${l.recordId}::int, ${l.action}::import_row_action, ${jsonbOrNull(l.snapshot)})`,
+              ),
               sql`, `,
             );
             await tx.execute(sql`
@@ -298,7 +387,10 @@ export async function runCommit(db: DbOrTx, importId: string, deps: CommitDeps =
       const ids = batch.map((r) => r.recordId);
       try {
         const keys = await db.transaction(async (tx) => {
-          const existingRows = await tx.select(recordColumns).from(records).where(and(inArray(records.id, ids), eq(records.layerId, layer.id)));
+          const existingRows = await tx
+            .select(recordColumns)
+            .from(records)
+            .where(and(inArray(records.id, ids), eq(records.layerId, layer.id)));
           if (existingRows.length === 0) return [] as string[];
           const values = sql.join(
             existingRows.map((r) => sql`(${r.id}::int, ${JSON.stringify(jsonify(r))}::jsonb)`),
@@ -327,19 +419,24 @@ export async function runCommit(db: DbOrTx, importId: string, deps: CommitDeps =
 
     const wroteSomething = counts.created + counts.updated + counts.deleted > 0;
     const status = failedBatches > 0 && !wroteSomething ? 'FAILED' : 'COMPLETED';
-    const now = new Date();
     await db.transaction(async (tx) => {
       await tx
         .update(imports)
         .set({
           status,
-          committedAt: now,
+          // Reloj de la BD (igual que `updated_at` de los registros): así "modificado después de importar" no depende del reloj del worker.
+          committedAt: sql`now()`,
           createdCount: counts.created,
           updatedCount: counts.updated,
           skippedCount: counts.skipped,
           failedCount: counts.failed,
           deletedCount: counts.deleted,
-          progress: { phase: status === 'COMPLETED' ? 'completed' : 'failed', done: total, total, pendingGeocode: 0 },
+          progress: withProgress(imp, {
+            phase: status === 'COMPLETED' ? 'completed' : 'failed',
+            done: total,
+            total,
+            pendingGeocode: 0,
+          }),
           errorMessage:
             status === 'FAILED'
               ? 'No se pudo guardar ningún registro. Revisa el archivo e intenta de nuevo; si el problema sigue, avisa al administrador.'
@@ -366,13 +463,14 @@ export async function runCommit(db: DbOrTx, importId: string, deps: CommitDeps =
       .update(imports)
       .set({
         status: 'FAILED',
-        errorMessage: 'No se pudo completar la importación. Intenta de nuevo; si el problema sigue, avisa al administrador.',
+        errorMessage:
+          'No se pudo completar la importación. Intenta de nuevo; si el problema sigue, avisa al administrador.',
         createdCount: counts.created,
         updatedCount: counts.updated,
         skippedCount: counts.skipped,
         failedCount: counts.failed,
         deletedCount: counts.deleted,
-        progress: { phase: 'failed' },
+        progress: withProgress(imp, { phase: 'failed' }),
       })
       .where(eq(imports.id, importId));
   }

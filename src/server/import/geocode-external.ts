@@ -5,7 +5,12 @@ import type { ImportMessage, ParsedRow } from '@/shared/schemas/import-rows';
 import { getGeocoder, type Geocoder } from '../geocoding';
 import { logger } from '../logger';
 import { requireLayer } from '../services/_shared';
-import { LOCATION_MISSING_MESSAGE, applyLocation, locationApproxMessage, statusFromMessages } from './analysis';
+import {
+  LOCATION_MISSING_MESSAGE,
+  applyLocation,
+  locationApproxMessage,
+  statusFromMessages,
+} from './analysis';
 import { decrementPendingGeocodeSql } from './analyze';
 
 /**

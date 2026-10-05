@@ -244,5 +244,9 @@ export type ImportStatusFull = ImportStatusDto & {
   layer: ImportSource['layer'];
   /** Filas aún pendientes de geocodificación externa (`progress.pendingGeocode`). */
   pendingGeocode: number;
+  /** Encabezados del archivo en su orden original (para la revisión y el CSV de errores). */
+  headers: string[];
+  /** Duplicados ya resueltos, por resolución (para el resumen "Se crearán X, se actualizarán Y…"). */
+  resolutions: { skip: number; update: number; create: number };
   source?: ImportSource;
 };

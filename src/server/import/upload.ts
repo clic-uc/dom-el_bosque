@@ -21,7 +21,14 @@ export type UploadFile = { name: string; size: number; arrayBuffer: () => Promis
 
 const LAT_ALIASES = new Set(['lat', 'latitud', 'latitude', 'y']);
 const LON_ALIASES = new Set(['lon', 'lng', 'long', 'longitud', 'longitude', 'x']);
-const COMMENT_ALIASES = new Set(['comentarios', 'comentario', 'observaciones', 'observacion', 'comments', 'notas']);
+const COMMENT_ALIASES = new Set([
+  'comentarios',
+  'comentario',
+  'observaciones',
+  'observacion',
+  'comments',
+  'notas',
+]);
 
 /** Auto-mapeo por nombre, case/acento-insensible, por label y por key de los campos (§10.2 paso 2). */
 export function buildSuggestedMapping(
@@ -68,7 +75,7 @@ export function buildSuggestedMapping(
   return mapping;
 }
 
-export function toImportSource(imp: ImportRow, table: ParsedTable, layer: LayerRow): ImportSource {
+function toImportSource(imp: ImportRow, table: ParsedTable, layer: LayerRow): ImportSource {
   return {
     importId: imp.id,
     fileType: imp.fileType as 'csv' | 'xlsx',
@@ -96,7 +103,9 @@ function fileTypeOf(name: string): 'csv' | 'xlsx' {
   if (ext === 'csv' || ext === 'txt') return 'csv';
   if (ext === 'xlsx') return 'xlsx';
   if (ext === 'xls') {
-    throw new ValidationError('Los archivos .xls (Excel antiguo) no se aceptan. Ábrelo en Excel y guárdalo como .xlsx.');
+    throw new ValidationError(
+      'Los archivos .xls (Excel antiguo) no se aceptan. Ábrelo en Excel y guárdalo como .xlsx.',
+    );
   }
   throw new ValidationError('Solo se aceptan archivos .csv o .xlsx (Excel).');
 }
@@ -105,13 +114,20 @@ function fileTypeOf(name: string): 'csv' | 'xlsx' {
  * Subir (§8.5): valida tipo y tamaño, guarda el archivo en storage, crea la importación en UPLOADED
  * (vence a los 7 días) y devuelve la vista previa con el mapeo sugerido.
  */
-export async function uploadImport(db: DbOrTx, actor: Actor, layerId: number, file: UploadFile): Promise<ImportSource> {
+export async function uploadImport(
+  db: DbOrTx,
+  actor: Actor,
+  layerId: number,
+  file: UploadFile,
+): Promise<ImportSource> {
   const layer = await requireLayer(db, layerId);
   const fileType = fileTypeOf(file.name);
   const maxBytes = env.MAX_IMPORT_FILE_MB * 1024 * 1024;
   if (file.size <= 0) throw new ValidationError('El archivo está vacío.');
   if (file.size > maxBytes) {
-    throw new ValidationError(`El archivo pesa más de ${env.MAX_IMPORT_FILE_MB} MB. Divide la planilla en partes más pequeñas.`);
+    throw new ValidationError(
+      `El archivo pesa más de ${env.MAX_IMPORT_FILE_MB} MB. Divide la planilla en partes más pequeñas.`,
+    );
   }
 
   const id = randomUUID();
@@ -120,7 +136,10 @@ export async function uploadImport(db: DbOrTx, actor: Actor, layerId: number, fi
 
   let table: ParsedTable & { headerRow: number };
   try {
-    table = await readImportTable({ fileKey, fileType, sheetName: null, headerRow: 1, delimiter: null }, { headerRow: null });
+    table = await readImportTable(
+      { fileKey, fileType, sheetName: null, headerRow: 1, delimiter: null },
+      { headerRow: null },
+    );
   } catch (err) {
     await storage.delete(fileKey);
     throw err;
@@ -150,11 +169,18 @@ export async function uploadImport(db: DbOrTx, actor: Actor, layerId: number, fi
 }
 
 /** `PATCH /api/imports/:id` (§8.5 paso 4): vuelve a leer con otra hoja, fila de encabezados o delimitador. */
-export async function patchImportSource(db: DbOrTx, actor: Actor, id: string, patch: ImportSourcePatch): Promise<ImportSource> {
+export async function patchImportSource(
+  db: DbOrTx,
+  actor: Actor,
+  id: string,
+  patch: ImportSourcePatch,
+): Promise<ImportSource> {
   const imp = await requireImport(db, id);
   assertOwnImport(actor, imp);
   if (imp.status !== 'UPLOADED') {
-    throw new ConflictError('Esta importación ya fue analizada. Para cambiar la hoja o los encabezados, descártala y vuelve a subir el archivo.');
+    throw new ConflictError(
+      'Esta importación ya fue analizada. Para cambiar la hoja o los encabezados, descártala y vuelve a subir el archivo.',
+    );
   }
   const layer = await requireLayer(db, imp.layerId);
 

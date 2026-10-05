@@ -1,7 +1,7 @@
 'use client';
 
 import { Crosshair, ExternalLink, Hash, Loader2, LocateFixed, MapPinOff, Trash2 } from 'lucide-react';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { LayerIcon } from '@/components/shared/layer-icon';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { ErrorState, LoadingState } from '@/components/shared/states';
@@ -79,14 +79,28 @@ function sameValue(a: unknown, b: unknown): boolean {
 
 function operationSentence(type: string, date: string, results: string[], reference?: string | null): string {
   const verb =
-    type === 'subdivision' ? 'subdividido' : type === 'fusion' ? 'fusionado' : type === 'rectificacion' ? 'rectificado' : 'modificado';
+    type === 'subdivision'
+      ? 'subdividido'
+      : type === 'fusion'
+        ? 'fusionado'
+        : type === 'rectificacion'
+          ? 'rectificado'
+          : 'modificado';
   const tail = results.length ? ` en ${results.join(', ')}` : '';
   const ref = reference ? ` (${reference})` : '';
   return `Este rol fue ${verb} el ${formatDate(date)}${tail}${ref}.`;
 }
 
 /** Panel derecho del registro (§10.2): lectura y edición completa, correlativo, comentarios y adjuntos. */
-export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole, onOpenRecord, onWorkInLayer, onCenter }: Props) {
+export function RecordSidePanel({
+  recordId,
+  workingLayerId,
+  onClose,
+  onOpenRole,
+  onOpenRecord,
+  onWorkInLayer,
+  onCenter,
+}: Props) {
   const can = useCan();
   const canEdit = can('records.write');
   const ids = useId();
@@ -106,15 +120,14 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
   const [correctReason, setCorrectReason] = useState('');
 
   // El borrador se rehace cuando cambia el registro o llega una versión nueva del servidor (tras guardar).
+  // (Patrón "ajustar estado durante el render" de React: sin efecto ni render extra con datos viejos.)
   const serverKey = record ? `${record.id}:${record.updatedAt}` : '';
-  useEffect(() => {
-    if (record && serverKey !== draftKey) {
-      setDraft(draftFrom(record));
-      setDraftKey(serverKey);
-      setDuplicate(null);
-      setValidation(null);
-    }
-  }, [record, serverKey, draftKey]);
+  if (record && serverKey !== draftKey) {
+    setDraft(draftFrom(record));
+    setDraftKey(serverKey);
+    setDuplicate(null);
+    setValidation(null);
+  }
 
   const update = useUpdateRecord();
   const remove = useDeleteRecord();
@@ -123,8 +136,14 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
   const correct = useCorrectNumber();
 
   const autoField: LayerField | undefined = record?.layer.fields.find((f) => f.type === 'autonumber');
-  const editableFields = useMemo(() => record?.layer.fields.filter((f) => f.type !== 'autonumber') ?? [], [record]);
-  const counters = useLayerCounters(record?.layerId ?? null, assignOpen && can('records.assignNumber') && !!autoField);
+  const editableFields = useMemo(
+    () => record?.layer.fields.filter((f) => f.type !== 'autonumber') ?? [],
+    [record],
+  );
+  const counters = useLayerCounters(
+    record?.layerId ?? null,
+    assignOpen && can('records.assignNumber') && !!autoField,
+  );
   const nextNumber = counters.data?.find((c) => c.fieldKey === autoField?.key)?.next ?? null;
 
   const patch = useMemo<UpdateRecordInput | null>(() => {
@@ -147,7 +166,8 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
       if (!sameValue(v, record.attributes[f.key])) attrs[f.key] = v;
     }
     if (Object.keys(attrs).length) p.attributes = attrs;
-    if ((draft.comments.trim() || null) !== (record.comments ?? null)) p.comments = draft.comments.trim() || null;
+    if ((draft.comments.trim() || null) !== (record.comments ?? null))
+      p.comments = draft.comments.trim() || null;
     return Object.keys(p).length ? p : null;
   }, [record, draft, editableFields]);
 
@@ -157,15 +177,19 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
     if (!draft || !record) return null;
     const lat = parseCoord(draft.lat);
     const lon = parseCoord(draft.lon);
-    if (Number.isNaN(lat) || Number.isNaN(lon)) return 'Las coordenadas deben ser números (por ejemplo -33.560560 y -70.661440).';
-    if ((lat === null) !== (lon === null)) return 'Latitud y longitud van juntas: completa ambas o deja ambas vacías.';
-    if (lat !== null && (lat < -90 || lat > 90 || lon! < -180 || lon! > 180)) return 'Las coordenadas están fuera de rango.';
+    if (Number.isNaN(lat) || Number.isNaN(lon))
+      return 'Las coordenadas deben ser números (por ejemplo -33.560560 y -70.661440).';
+    if ((lat === null) !== (lon === null))
+      return 'Latitud y longitud van juntas: completa ambas o deja ambas vacías.';
+    if (lat !== null && (lat < -90 || lat > 90 || lon! < -180 || lon! > 180))
+      return 'Las coordenadas están fuera de rango.';
     if (record.layer.hasRole && draft.roleId.trim()) {
       const parsed = tryNormalizeRoleId(draft.roleId);
       if (!parsed.ok) return 'El rol debe tener el formato 00000-00000.';
     }
     for (const f of editableFields) {
-      if (f.required && coerceFieldValue(f, draft.attributes[f.key]) === null) return `Completa el campo "${f.label}".`;
+      if (f.required && coerceFieldValue(f, draft.attributes[f.key]) === null)
+        return `Completa el campo "${f.label}".`;
     }
     return null;
   }
@@ -179,14 +203,19 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
     try {
       await update.mutateAsync({ id: record.id, patch });
     } catch (e) {
-      if (isDuplicateConflict(e)) setDuplicate({ message: e.message, existingRecordId: e.details.existingRecordId });
+      if (isDuplicateConflict(e))
+        setDuplicate({ message: e.message, existingRecordId: e.details.existingRecordId });
       else setValidation(errorMessage(e));
     }
   }
 
   async function confirmDelete() {
     if (!record) return;
-    await remove.mutateAsync({ id: record.id, layerId: record.layerId, reason: deleteReason.trim() || undefined });
+    await remove.mutateAsync({
+      id: record.id,
+      layerId: record.layerId,
+      reason: deleteReason.trim() || undefined,
+    });
     setDeleteOpen(false);
     onClose();
   }
@@ -201,7 +230,11 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
   if (detail.isError || !record || !draft) {
     return (
       <SidePanel title="Datos del registro" onClose={onClose}>
-        <ErrorState title="No se pudo cargar el registro" message={errorMessage(detail.error)} onRetry={() => void detail.refetch()} />
+        <ErrorState
+          title="No se pudo cargar el registro"
+          message={errorMessage(detail.error)}
+          onRetry={() => void detail.refetch()}
+        />
       </SidePanel>
     );
   }
@@ -227,7 +260,12 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
             {record.layer.name}
           </span>
           {isOverlay ? (
-            <Button variant="link" size="sm" className="h-auto p-0 text-sm" onClick={() => onWorkInLayer(record.layerId)}>
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-sm"
+              onClick={() => onWorkInLayer(record.layerId)}
+            >
               Trabajar en esta capa
             </Button>
           ) : null}
@@ -245,7 +283,12 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
               <AlertTitle>Ya existe un registro igual</AlertTitle>
               <AlertDescription>
                 <p>{duplicate.message}</p>
-                <Button variant="outline" size="lg" className="mt-2" onClick={() => onOpenRecord(duplicate.existingRecordId)}>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="mt-2"
+                  onClick={() => onOpenRecord(duplicate.existingRecordId)}
+                >
                   Abrir registro existente
                 </Button>
               </AlertDescription>
@@ -253,7 +296,13 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
           ) : null}
           <div className="flex items-center justify-between gap-2">
             {canDelete ? (
-              <Button variant="ghost" size="lg" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setDeleteOpen(true)} disabled={busy}>
+              <Button
+                variant="ghost"
+                size="lg"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setDeleteOpen(true)}
+                disabled={busy}
+              >
                 <Trash2 aria-hidden /> Eliminar registro
               </Button>
             ) : (
@@ -313,7 +362,12 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
               <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-base text-muted-foreground">Sin número asignado</p>
                 {can('records.assignNumber') ? (
-                  <Button size="lg" variant="secondary" className="bg-secondary-strong text-white hover:bg-secondary-strong/90" onClick={() => setAssignOpen(true)}>
+                  <Button
+                    size="lg"
+                    variant="secondary"
+                    className="bg-secondary-strong text-white hover:bg-secondary-strong/90"
+                    onClick={() => setAssignOpen(true)}
+                  >
                     Asignar {autoField.label}
                   </Button>
                 ) : null}
@@ -333,15 +387,29 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
             <Label htmlFor={`${ids}-rol`} className="text-base">
               Rol
             </Label>
-            <RoleInput id={`${ids}-rol`} value={draft.roleId} onChange={(v) => setDraft({ ...draft, roleId: v })} onRoleResolved={setResolvedRole} disabled={!canEdit || busy} />
+            <RoleInput
+              id={`${ids}-rol`}
+              value={draft.roleId}
+              onChange={(v) => setDraft({ ...draft, roleId: v })}
+              onRoleResolved={setResolvedRole}
+              disabled={!canEdit || busy}
+            />
             {record.roleId ? (
-              <Button variant="link" className="h-auto p-0 text-base" onClick={() => onOpenRole(record.roleId!)}>
-                Ver ficha del rol ({record.sameRoleCount} {record.sameRoleCount === 1 ? 'registro' : 'registros'}) <ExternalLink className="size-4" aria-hidden />
+              <Button
+                variant="link"
+                className="h-auto p-0 text-base"
+                onClick={() => onOpenRole(record.roleId!)}
+              >
+                Ver ficha del rol ({record.sameRoleCount}{' '}
+                {record.sameRoleCount === 1 ? 'registro' : 'registros'}){' '}
+                <ExternalLink className="size-4" aria-hidden />
               </Button>
             ) : null}
             {record.roleLastOperation ? (
               <Alert className="border-amber-300 bg-amber-50">
-                <AlertTitle className="text-amber-900">{roleOperationTypeLabels[record.roleLastOperation.type]} del rol</AlertTitle>
+                <AlertTitle className="text-amber-900">
+                  {roleOperationTypeLabels[record.roleLastOperation.type]} del rol
+                </AlertTitle>
                 <AlertDescription className="text-amber-900">
                   <p>
                     {operationSentence(
@@ -353,7 +421,11 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
                     El registro conserva su rol original.
                   </p>
                   {record.roleId ? (
-                    <Button variant="link" className="h-auto p-0 text-amber-900 underline" onClick={() => onOpenRole(record.roleId!)}>
+                    <Button
+                      variant="link"
+                      className="h-auto p-0 text-amber-900 underline"
+                      onClick={() => onOpenRole(record.roleId!)}
+                    >
                       Ver la ficha del rol
                     </Button>
                   ) : null}
@@ -362,7 +434,8 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
             ) : null}
             {record.backsOperation ? (
               <p className="text-sm text-muted-foreground">
-                Este registro respalda la {roleOperationTypeLabels[record.backsOperation.type].toLowerCase()} de {record.backsOperation.originRoleIds.join(', ')}.
+                Este registro respalda la {roleOperationTypeLabels[record.backsOperation.type].toLowerCase()}{' '}
+                de {record.backsOperation.originRoleIds.join(', ')}.
               </p>
             ) : null}
           </PanelSection>
@@ -376,7 +449,12 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
           }
           action={
             hasCoords ? (
-              <Button variant="outline" size="sm" className="h-9" onClick={() => onCenter(record.lat!, record.lon!)}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9"
+                onClick={() => onCenter(record.lat!, record.lon!)}
+              >
                 <Crosshair aria-hidden /> Centrar
               </Button>
             ) : null
@@ -384,7 +462,8 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
         >
           {!hasCoords ? (
             <p className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
-              <MapPinOff className="size-4 shrink-0" aria-hidden /> Sin ubicación: este registro solo aparece en la tabla. Escribe sus coordenadas para verlo en el mapa.
+              <MapPinOff className="size-4 shrink-0" aria-hidden /> Sin ubicación: este registro solo aparece
+              en la tabla. Escribe sus coordenadas para verlo en el mapa.
             </p>
           ) : null}
           <div className="grid grid-cols-2 gap-3">
@@ -392,20 +471,38 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
               <Label htmlFor={`${ids}-lat`} className="text-base">
                 Latitud
               </Label>
-              <Input id={`${ids}-lat`} inputMode="decimal" className="h-11 text-base" value={draft.lat} onChange={(e) => setDraft({ ...draft, lat: e.target.value })} disabled={!canEdit || busy} placeholder="-33.560560" />
+              <Input
+                id={`${ids}-lat`}
+                inputMode="decimal"
+                className="h-11 text-base"
+                value={draft.lat}
+                onChange={(e) => setDraft({ ...draft, lat: e.target.value })}
+                disabled={!canEdit || busy}
+                placeholder="-33.560560"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor={`${ids}-lon`} className="text-base">
                 Longitud
               </Label>
-              <Input id={`${ids}-lon`} inputMode="decimal" className="h-11 text-base" value={draft.lon} onChange={(e) => setDraft({ ...draft, lon: e.target.value })} disabled={!canEdit || busy} placeholder="-70.661440" />
+              <Input
+                id={`${ids}-lon`}
+                inputMode="decimal"
+                className="h-11 text-base"
+                value={draft.lon}
+                onChange={(e) => setDraft({ ...draft, lon: e.target.value })}
+                disabled={!canEdit || busy}
+                placeholder="-70.661440"
+              />
             </div>
           </div>
           {record.coordsSource ? (
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <Badge variant="outline" className="rounded-md text-sm">
                 {coordsSourceLabels[record.coordsSource]}
-                {record.coordsSource === 'geocoded' && record.geocode ? ` · ${geocodeConfidenceLabels[record.geocode.confidence]}` : ''}
+                {record.coordsSource === 'geocoded' && record.geocode
+                  ? ` · ${geocodeConfidenceLabels[record.geocode.confidence]}`
+                  : ''}
               </Badge>
               {canEdit && record.roleId && roleHasCoords && record.coordsSource !== 'role' ? (
                 <Button
@@ -413,15 +510,26 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
                   size="sm"
                   className="h-9"
                   disabled={busy}
-                  onClick={() => void coords.mutateAsync({ id: record.id, layerId: record.layerId, input: { useRole: true } })}
+                  onClick={() =>
+                    void coords.mutateAsync({
+                      id: record.id,
+                      layerId: record.layerId,
+                      input: { useRole: true },
+                    })
+                  }
                 >
                   <LocateFixed aria-hidden /> Usar coordenadas del rol
                 </Button>
               ) : null}
             </div>
           ) : null}
-          {resolvedRole && resolvedRole.id !== record.roleId && resolvedRole.lat !== null && record.coordsSource !== 'own' ? (
-            <p className="text-sm text-muted-foreground">Al guardar, las coordenadas se tomarán del nuevo rol.</p>
+          {resolvedRole &&
+          resolvedRole.id !== record.roleId &&
+          resolvedRole.lat !== null &&
+          record.coordsSource !== 'own' ? (
+            <p className="text-sm text-muted-foreground">
+              Al guardar, las coordenadas se tomarán del nuevo rol.
+            </p>
           ) : null}
         </PanelSection>
 
@@ -436,7 +544,15 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
                       {f.label}
                       {f.required ? <span className="text-destructive"> *</span> : null}
                     </Label>
-                    <FieldInput id={`${ids}-${f.key}`} field={f} value={draft.attributes[f.key] ?? ''} onChange={(v) => setDraft({ ...draft, attributes: { ...draft.attributes, [f.key]: v } })} disabled={!canEdit || busy} />
+                    <FieldInput
+                      id={`${ids}-${f.key}`}
+                      field={f}
+                      value={draft.attributes[f.key] ?? ''}
+                      onChange={(v) =>
+                        setDraft({ ...draft, attributes: { ...draft.attributes, [f.key]: v } })
+                      }
+                      disabled={!canEdit || busy}
+                    />
                     {current ? <p className="text-sm text-muted-foreground">Actual: {current}</p> : null}
                   </div>
                 );
@@ -449,11 +565,22 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
           <Label htmlFor={`${ids}-comments`} className="sr-only">
             Comentarios
           </Label>
-          <Textarea id={`${ids}-comments`} value={draft.comments} onChange={(e) => setDraft({ ...draft, comments: e.target.value })} disabled={!canEdit || busy} placeholder="Sin comentarios" className="min-h-24 text-base" />
+          <Textarea
+            id={`${ids}-comments`}
+            value={draft.comments}
+            onChange={(e) => setDraft({ ...draft, comments: e.target.value })}
+            disabled={!canEdit || busy}
+            placeholder="Sin comentarios"
+            className="min-h-24 text-base"
+          />
         </PanelSection>
 
         <PanelSection title="Adjuntos">
-          <AttachmentsList entityType="record" entityId={String(record.id)} canEdit={can('attachments.write')} />
+          <AttachmentsList
+            entityType="record"
+            entityId={String(record.id)}
+            canEdit={can('attachments.write')}
+          />
         </PanelSection>
 
         <p className="text-xs text-muted-foreground">
@@ -473,11 +600,13 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
         description={
           <div className="space-y-2">
             <p>
-              Se eliminará el registro {record.roleId ? `del rol ${record.roleId} ` : ''}de la capa "{record.layer.name}", junto con sus comentarios y adjuntos. Esta acción no se puede deshacer.
+              Se eliminará el registro {record.roleId ? `del rol ${record.roleId} ` : ''}de la capa “
+              {record.layer.name}”, junto con sus comentarios y adjuntos. Esta acción no se puede deshacer.
             </p>
             {hasNumberAssigned ? (
               <p className="text-amber-900">
-                Este registro tiene el número {formatInt(number as number)} asignado. El número no se reutilizará; se recomienda marcarlo como anulado en vez de borrarlo.
+                Este registro tiene el número {formatInt(number as number)} asignado. El número no se
+                reutilizará; se recomienda marcarlo como anulado en vez de borrarlo.
               </p>
             ) : null}
           </div>
@@ -488,7 +617,13 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
             <Label htmlFor={`${ids}-del-reason`} className="text-base">
               Motivo (obligatorio)
             </Label>
-            <Input id={`${ids}-del-reason`} className="h-11 text-base" value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)} placeholder="Por ejemplo: registro duplicado" />
+            <Input
+              id={`${ids}-del-reason`}
+              className="h-11 text-base"
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value)}
+              placeholder="Por ejemplo: registro duplicado"
+            />
           </div>
         ) : null}
       </ConfirmDialog>
@@ -510,7 +645,8 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
                 <p className="text-muted-foreground">Calculando el próximo número…</p>
               ) : nextNumber !== null ? (
                 <p>
-                  Se asignará el <strong>N° {formatInt(nextNumber)}</strong> (número referencial; el definitivo se confirma al guardar).
+                  Se asignará el <strong>N° {formatInt(nextNumber)}</strong> (número referencial; el
+                  definitivo se confirma al guardar).
                 </p>
               ) : (
                 <p>Se asignará el próximo número disponible de la capa.</p>
@@ -529,7 +665,10 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
           title={`Corregir ${autoField.label}`}
           confirmLabel="Guardar corrección"
           pending={correct.isPending}
-          disabled={correctReason.trim().length < 3 || (correctValue.trim() !== '' && !/^\d+$/.test(correctValue.trim()))}
+          disabled={
+            correctReason.trim().length < 3 ||
+            (correctValue.trim() !== '' && !/^\d+$/.test(correctValue.trim()))
+          }
           onConfirm={async () => {
             await correct.mutateAsync({
               id: record.id,
@@ -539,20 +678,37 @@ export function RecordSidePanel({ recordId, workingLayerId, onClose, onOpenRole,
             });
             setCorrectOpen(false);
           }}
-          description={<p>Solo para números mal puestos o entregados fuera de la plataforma. La corrección queda registrada en la auditoría con tu nombre y el motivo.</p>}
+          description={
+            <p>
+              Solo para números mal puestos o entregados fuera de la plataforma. La corrección queda
+              registrada en la auditoría con tu nombre y el motivo.
+            </p>
+          }
         >
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label htmlFor={`${ids}-correct-value`} className="text-base">
                 Número correcto (vacío para quitarlo)
               </Label>
-              <Input id={`${ids}-correct-value`} inputMode="numeric" className="h-11 text-base" value={correctValue} onChange={(e) => setCorrectValue(e.target.value)} />
+              <Input
+                id={`${ids}-correct-value`}
+                inputMode="numeric"
+                className="h-11 text-base"
+                value={correctValue}
+                onChange={(e) => setCorrectValue(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor={`${ids}-correct-reason`} className="text-base">
                 Motivo (obligatorio)
               </Label>
-              <Input id={`${ids}-correct-reason`} className="h-11 text-base" value={correctReason} onChange={(e) => setCorrectReason(e.target.value)} placeholder="Por ejemplo: número entregado en Excel" />
+              <Input
+                id={`${ids}-correct-reason`}
+                className="h-11 text-base"
+                value={correctReason}
+                onChange={(e) => setCorrectReason(e.target.value)}
+                placeholder="Por ejemplo: número entregado en Excel"
+              />
             </div>
           </div>
         </ConfirmDialog>

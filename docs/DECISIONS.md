@@ -48,3 +48,97 @@ Registro de toda desviación o precisión respecto de `PROMPT.md`. Formato: fech
 **2026-10-05 — Datos de prueba e2e.** Los tests de servicios corren contra bases `sigdom_test*` reales; cada área usa su propia base para poder ejecutarse en paralelo. Las pruebas del geocodificador externo usan proveedores falsos (`createGeocoder({ overrides })`).
 
 **2026-10-05 — `exceljs` como devDependency.** Solo para generar fixtures `.xlsx` en los tests de importación (la lectura en producción sigue siendo `read-excel-file`).
+
+## Fase 3 — Capas
+
+**2026-10-05 — Clave interna siempre derivada del nombre.** La `key` de un campo se genera con `toFieldKey` + sufijo único y nunca se edita a mano (para usuarios no técnicos es un detalle; se muestra en texto pequeño). En edición, "Cambiar también la clave interna" solo aparece si el nombre nuevo daría otra clave, y explica cuántos registros se moverán.
+
+**2026-10-05 — Orden de campos con Subir/Bajar y campos únicos como casillas.** En vez de arrastrar y soltar o combobox multi-selección: más accesible y claro para el público objetivo.
+
+**2026-10-05 — Rol SII activado por defecto al crear una capa.** La mayoría de las capas de la DOM lo usan.
+
+**2026-10-05 — Formularios que se montan al abrir y se desmontan al cerrar** (`key` por capa/modo) en vez de `form.reset` en efectos: cumple las reglas del React Compiler y parte siempre del dato actual. Se aplica en LayerFormDialog, IconPicker, CreateRecordDialog, CoordinateUpdateDialog y FiltersPanel.
+
+**2026-10-05 — Cambio de tipo de campo.** Sin valores guardados no pide confirmación; con valores exige revisar la vista previa y marcar la confirmación; a correlativo con valores no enteros queda bloqueado mostrando ejemplos.
+
+**2026-10-05 — Bugs de fundación corregidos.** (1) `listLayers` calculaba `recordCount` con una subconsulta sin alias (Drizzle no califica columnas en selects de una sola tabla y `"id"` resolvía a `records.id`). (2) Las migraciones JSONB de §7.2 fallaban por parámetros sin tipo en `jsonb_build_object($n, …)`: se agregó `::text`. (3) El `before` de auditoría de `setNextNumber` era incorrecto. El mismo problema de alias se corrigió en `users.listUsers`.
+
+**2026-10-05 — Tests de servicios no paralelos por archivo.** `vitest.config.mts` fija `fileParallelism: false` en el proyecto `node`: los archivos comparten BD y hacen TRUNCATE. Además, los tests de capas se serializan con `pg_advisory_lock`.
+
+## Fases 4–6 — UI del mapa
+
+**2026-10-05 — Paneles derechos dentro del layout, no en portal.** RecordSidePanel, RoleSheet, PolygonSidePanel y FiltersPanel usan un shell propio (`SidePanel`, `role="dialog"` no modal) como columna junto al mapa: el mapa se encoge y sigue recibiendo clics, el panel no tapa la toolbar y se evitan los problemas de Radix con diálogos no modales. El `Sheet` de Radix se usa solo para el sidebar en pantallas < 1024 px. Un panel derecho a la vez (registro | rol | polígono); el de filtros puede coexistir.
+
+**2026-10-05 — El mapa permanece montado en vista tabla** (`display: none`) para no perder imágenes de marcador, vista ni fuentes.
+
+**2026-10-05 — Orden de dibujo con capas ancla y `beforeId`** (polígonos → calor → superpuestas → trabajo → selección) para que las fuentes cargadas de forma perezosa se inserten en su lugar.
+
+**2026-10-05 — Filtros de ubicación y correlativo en la URL** como `loc=none|approx` y `num=with|without` (el prompt solo define `f[...]`). En vista mapa el texto de búsqueda no se escribe en la URL (§8.6); en vista tabla sí (`q`).
+
+**2026-10-05 — Mapa de calor.** `wMax` = percentil 95; sin selección explícita se incluyen todas las capas visibles (en modo Valor, las que tienen campo numérico). Radio, intensidad y "Mostrar puntos" son estado local.
+
+**2026-10-05 — Estilo de respaldo del mapa.** Si `NEXT_PUBLIC_MAP_STYLE_URL` no está definido, raster OSM con glyphs de OpenFreeMap.
+
+## Fases 8–9 — Administración, polígonos y adjuntos
+
+**2026-10-05 — Headers de admin para Better Auth.** Los Route Handlers pasan `req.headers` al servicio y este llama `auth.api.setRole/setUserPassword/revokeUserSessions/removeUser({ body, headers })`; `createUser` se llama sin headers (el rol lo verificó `withActor`). Los `APIError` de Better Auth se traducen a errores de dominio en español.
+
+**2026-10-05 — Un admin no puede asignarse contraseña temporal desde el panel** (le cerraría la sesión): usa "Mi cuenta". Cambios de rol con confirmación solo para "Nombrar administrador" y "Quitar rol"; rol por defecto "Visor" al crear usuarios.
+
+**2026-10-05 — `getPolygonStats` incluye polígonos con 0 registros** (LEFT JOIN, al final) para que coropletas y paneles tengan la lista completa. ETag de polígonos `W/"polygons-<kind>-<count>-<max(updated_at)>"`.
+
+**2026-10-05 — Límite de adjuntos en cliente** con el valor por defecto (20 MB) y los tipos de `constants.ts`; la validación real es del servidor.
+
+## Fase 10 — Manual
+
+**2026-10-05 — `meta` duplicado en `registry.ts` y en cada MDX.** El índice y la navegación leen el registro para no cargar 24 módulos por vista; un test garantiza que coincidan. `mdx-components.tsx` en la raíz, sin `@tailwindcss/typography`. Tres páginas redactadas completas (primeros-pasos, registros/asignar-numero, capas/campos-unicos); el resto en borrador con esquema.
+
+## Fase 11 — Producción
+
+**2026-10-05 — Scripts CLI en CommonJS con esbuild;** `next`, `next/*`, `pg-native` y `pino-pretty` externos. `NEXT_PUBLIC_*` se fijan como build args del Dockerfile; el comando canónico es `docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build`. `name: sigdom` en el compose para volúmenes predecibles.
+
+**2026-10-05 — Restore recrea la base** (DROP/CREATE WITH FORCE) en vez de `--clean`, por las extensiones PostGIS; dump `--no-owner --no-privileges`.
+
+**2026-10-05 — e2e y rate limit.** Cada contexto de Playwright envía un `X-Forwarded-For` 10.x.y.z aleatorio porque el límite de 5 intentos/min por IP bloqueaba la suite; Caddy sobrescribe esa cabecera en producción. CI levanta la app con `pnpm build && pnpm start`.
+
+**2026-10-05 — Ingreso con recarga completa.** `SignInForm` usa `window.location.assign` tras el sign-in: con `router.replace + router.refresh` el redirect de `/` ganaba y `?next=` se perdía.
+
+## Fases 4–6 — Backend de registros, roles y operaciones
+
+**2026-10-05 — Los roles de origen de una operación deben existir;** los resultantes se crean si no existen. Un error de tipeo en el origen crearía un rol falso y lo dejaría no vigente. Un rol no vigente no puede ser origen de ninguna operación (ni de una modificación); el mensaje sugiere los resultantes o eliminar la operación que lo reemplazó.
+
+**2026-10-05 — `resultCoords: 'inherit'`** asigna coordenadas solo a los resultantes que no las tienen (subdivisión/rectificación: las del origen; fusión: promedio de los orígenes) y las propaga a sus registros según §8.3. `superseded_at` se recalcula con `min(effective_date)` de las operaciones donde el rol es origen, al crear y al eliminar.
+
+**2026-10-05 — Bugs de fundación corregidos.** (1) `exportCsv` exportaba solo 2.000 filas: ahora pagina por cursor `id > lastId`. (2) `getGeocoder` quedaba atado a la primera transacción recibida: se construye sobre `db`. (3) `updateCoordinates` con alcance rol contaba dos veces el registro movido. (4) `setNumber` fallaba si otro registro tenía texto en el campo correlativo. (5) Un rol mal formado en la URL daba 500: `parseRoleIdParam` → 400. (6) Buscar "50-2" no encontraba `00050-00002`: `listRecords` aplica los mismos patrones de prefijo que `searchRoles`.
+
+**2026-10-05 — Búsqueda de texto libre.** `attributes::text ILIKE '%q%'` ronda 0,7 s con 40k registros. Pendiente de evaluar con datos reales: índice `GIN ((attributes::text) gin_trgm_ops)` (§7.3). El criterio de la Fase 5 (página de 50 con filtro por valor < 300 ms) se cumple.
+
+**2026-10-05 — Tests de servicios con `pg_advisory_lock` por archivo** en una conexión reservada, además de `fileParallelism: false`.
+
+## Fase 7 — Importación
+
+**2026-10-05 — Fila de encabezados autodetectada** (primera fila con ≥2 celdas con texto; las filas de título se saltan) y **delimitador CSV con detección propia** (la de PapaParse falla con títulos sin delimitador sobre los encabezados). Las filas vacías se saltan conservando la numeración real de la planilla.
+
+**2026-10-05 — Celdas XLSX se guardan como texto** en `raw` (Date → `aaaa-mm-dd`, decimales con coma, booleanos Sí/No) para que el mismo casteo aplique a CSV y Excel. El orden de encabezados se guarda en `imports.progress.headers` (JSONB no conserva el orden de claves).
+
+**2026-10-05 — Ubicaciones no exactas quedan como sugerencia** (`suggestedLocation` + candidatos) hasta aceptarlas por fila o en bloque; si no se aceptan, la fila se importa sin ubicación. Rol por dirección aproximada → `suggestedRoleId`. La geocodificación local se hace en lote (`padron-batch.ts`) replicando las reglas del proveedor `padron`.
+
+**2026-10-05 — Valores fijados a mano** (rol/lat/lon sin columna mapeada) se guardan en `raw` bajo claves reservadas `__roleId/__lat/__lon`, ocultas en UI y CSV.
+
+**2026-10-05 — Escrituras en bloque con `jsonb_to_recordset` y `UPDATE … FROM (VALUES …)`**: 10k filas se analizan en 1,7 s y se confirman en 2,9 s. `committedAt` usa `now()` de la BD para que la detección de "modificado después de importar" no dependa del reloj del proceso.
+
+**2026-10-05 — Índice `import_rows_record_idx`** (migración 0002): la FK `ON DELETE SET NULL` sin índice hacía que cada borrado de registro recorriera `import_rows` (revertir 10k filas tardaba ~30 s).
+
+**2026-10-05 — Permisos de importación.** Cualquier usuario autenticado puede listar importaciones y ver estado/filas/errores; las mutaciones son editor/admin y "propias" salvo admin. El análisis puede relanzarse desde UPLOADED/REVIEW/FAILED; `PATCH source` solo en UPLOADED.
+
+## Integración final
+
+**2026-10-05 — Worker de MapLibre servido desde `public/`.** Con Turbopack, MapLibre no puede resolver la URL de su worker desde `import.meta.url` ("Worker failed to load"). `scripts/copy-maplibre-worker.mjs` (hooks `predev`/`prebuild`) copia `maplibre-gl-worker.mjs` y `maplibre-gl-shared.mjs` a `public/` (ignorados por git) y `MapView` llama `setWorkerUrl('/maplibre-gl-worker.mjs')`. Cumple la CSP `worker-src 'self'`.
+
+**2026-10-05 — El proxy no intercepta estáticos.** El matcher de `proxy.ts` excluye `.js/.mjs/.css/.map/.woff2` además de imágenes: el worker se pedía con redirección 307 al ingreso.
+
+**2026-10-05 — CSP con `'unsafe-eval'` solo en desarrollo** (React y el HMR lo requieren); en producción se mantiene estricta. `script-src` admite `blob:` para los workers de MapLibre.
+
+**2026-10-05 — `STORAGE_DIR` con valor por defecto en `storage.ts`.** Durante `next build` se omite la validación de env (`SKIP_ENV_VALIDATION`) y el módulo se evalúa al recolectar rutas; sin el valor por defecto el build en Docker fallaba.
+
+**2026-10-05 — Limpieza de knip.** Se eliminaron 10 componentes shadcn sin uso (y `cmdk`, `date-fns`, `react-day-picker`). Los contratos compartidos (`src/shared/**`, servicios, `http.ts`, `lib/*`) se declaran como *entries* de knip: sus exports son API interna pública aunque hoy no todos tengan consumidor; `ignoreExportsUsedInFile` evita falsos positivos.

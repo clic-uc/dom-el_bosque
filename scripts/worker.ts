@@ -4,8 +4,8 @@
  *   pnpm worker            (desarrollo, con recarga)
  *   node scripts/worker.js (Docker)
  */
+import './_worker-env';
 import './_env';
-process.env.SIGDOM_PROCESS = 'worker';
 
 import { getBoss, stopBoss } from '@/server/jobs/boss';
 import { registerHandlers } from '@/server/jobs/handlers';

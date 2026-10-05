@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowRight } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -25,14 +25,18 @@ type Props = {
 };
 
 /** "Confirmar cambio de coordenadas" tras arrastrar un marcador (§10.2, §8.3). */
-export function CoordinateUpdateDialog({ request, onCancel, onDone }: Props) {
+export function CoordinateUpdateDialog(props: Props) {
+  // Cada solicitud nueva monta un diálogo limpio (la casilla vuelve a "solo este registro").
+  const key = props.request
+    ? `${props.request.recordId}:${props.request.to.lat}:${props.request.to.lon}`
+    : 'none';
+  return <CoordinateUpdateDialogInner key={key} {...props} />;
+}
+
+function CoordinateUpdateDialogInner({ request, onCancel, onDone }: Props) {
   const id = useId();
   const [scopeRole, setScopeRole] = useState(false);
   const mutation = useUpdateCoordinates();
-
-  useEffect(() => {
-    if (request) setScopeRole(false);
-  }, [request]);
 
   return (
     <ConfirmDialog
@@ -48,7 +52,11 @@ export function CoordinateUpdateDialog({ request, onCancel, onDone }: Props) {
         await mutation.mutateAsync({
           id: request.recordId,
           layerId: request.layerId,
-          input: { lat: request.to.lat, lon: request.to.lon, scope: scopeRole && request.roleId ? 'role' : 'record' },
+          input: {
+            lat: request.to.lat,
+            lon: request.to.lon,
+            scope: scopeRole && request.roleId ? 'role' : 'record',
+          },
         });
         onDone();
       }}
@@ -77,11 +85,19 @@ export function CoordinateUpdateDialog({ request, onCancel, onDone }: Props) {
             </div>
             {request.roleId ? (
               <div className="flex items-start gap-3 rounded-md border p-3">
-                <Checkbox id={`${id}-scope`} className="mt-1 size-5" checked={scopeRole} onCheckedChange={(c) => setScopeRole(c === true)} />
+                <Checkbox
+                  id={`${id}-scope`}
+                  className="mt-1 size-5"
+                  checked={scopeRole}
+                  onCheckedChange={(c) => setScopeRole(c === true)}
+                />
                 <div className="space-y-1">
                   <Label htmlFor={`${id}-scope`} className="text-base leading-snug">
                     Actualizar todos los registros con el mismo rol
-                    <HelpLink slug="registros/coordenadas" label="¿Qué significa actualizar todos los registros del rol?" />
+                    <HelpLink
+                      slug="registros/coordenadas"
+                      label="¿Qué significa actualizar todos los registros del rol?"
+                    />
                   </Label>
                   <p className="text-sm text-muted-foreground">
                     {scopeRole

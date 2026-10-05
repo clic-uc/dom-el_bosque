@@ -11,7 +11,7 @@ import {
 import { slugify, toFieldKey, uniqueSuffix } from '@/shared/text';
 import type { DuplicatesPreview, TypeConversionPreview } from '@/shared/types';
 import type { Actor } from '../auth/session';
-import { ConflictError, NotFoundError, ValidationError } from '../errors';
+import { NotFoundError, ValidationError } from '../errors';
 import { castValue, previewTypeConversion } from '../parsing/values';
 import { requireLayer, type LayerRow } from './_shared';
 import * as attachmentsService from './attachments';
@@ -309,4 +309,3 @@ export async function previewDuplicates(db: DbOrTx, layerId: number, uniqueKeys:
   return previewDuplicatesImpl(db, layer, uniqueKeys);
 }
 
-export { ConflictError };

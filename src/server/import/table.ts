@@ -47,10 +47,13 @@ export function checkHeaders(cells: string[]): HeaderCheck {
   if (headers.length === 0) {
     return {
       ok: false,
-      message: 'La fila de encabezados está vacía. Indica cuál es la fila que tiene los nombres de las columnas.',
+      message:
+        'La fila de encabezados está vacía. Indica cuál es la fila que tiene los nombres de las columnas.',
     };
   }
-  const empties = headers.map((h, i) => (h === '' ? columnLetter(i) : null)).filter((x): x is string => x !== null);
+  const empties = headers
+    .map((h, i) => (h === '' ? columnLetter(i) : null))
+    .filter((x): x is string => x !== null);
   if (empties.length) {
     return {
       ok: false,
@@ -69,14 +72,18 @@ export function checkHeaders(cells: string[]): HeaderCheck {
   }
   if (dupes.size) {
     const list = [...dupes].map((d) => `"${d}"`).join(', ');
-    return { ok: false, message: `Hay encabezados repetidos: ${list}. Cada columna debe tener un nombre distinto.` };
+    return {
+      ok: false,
+      message: `Hay encabezados repetidos: ${list}. Cada columna debe tener un nombre distinto.`,
+    };
   }
   return { ok: true, headers };
 }
 
 /**
- * Busca la primera fila (entre las 50 primeras) que sirva como encabezados: al menos 2 columnas con nombre,
- * sin vacíos intermedios ni repetidos. Útil cuando la planilla trae títulos sobre los encabezados.
+ * Busca la fila de encabezados entre las 50 primeras: la primera con al menos 2 celdas con texto. Las filas de
+ * título (una sola celda) se saltan. Si esa fila tiene encabezados repetidos o vacíos intermedios, se informa
+ * cuáles (ValidationError) en vez de seguir buscando y tomar una fila de datos como encabezados.
  */
 export function detectHeaderRow(
   records: readonly (readonly unknown[])[],
@@ -86,8 +93,11 @@ export function detectHeaderRow(
   const max = Math.min(records.length, limit);
   for (let i = 0; i < max; i++) {
     const cells = (records[i] ?? []).map(stringify);
+    const nonEmpty = cells.filter((c) => c.trim() !== '').length;
+    if (nonEmpty < 2) continue;
     const check = checkHeaders(cells);
-    if (check.ok && check.headers.length >= 2) return i + 1;
+    if (check.ok) return i + 1;
+    throw new ValidationError(`Fila ${i + 1}: ${check.message}`);
   }
   return null;
 }

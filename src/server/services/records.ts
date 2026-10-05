@@ -1,13 +1,13 @@
-import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '@/db/client';
-import { layers, records, roleOperationRoles, roleOperations, roles } from '@/db/schema';
+import { records, roleOperationRoles, roleOperations, roles } from '@/db/schema';
 import { normalizeRoleId } from '@/shared/role-id';
 import type { CreateRecordData, FeaturesQuery, RecordsQuery, UpdateRecordData } from '@/shared/schemas/records';
 import type { Paginated } from '@/shared/schemas/common';
 import type { RecordDetail, RecordFeature, RecordFeatureCollection, RoleDto } from '@/shared/types';
 import type { Actor } from '../auth/session';
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
+import { ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import { getGeocoder } from '../geocoding';
 import { castAttributes } from '../parsing/values';
 import { attr, escapeLike, recordColumns, requireLayer, roleIdLikePatterns, type LayerRow, type RecordRowNoGeom } from './_shared';
@@ -489,4 +489,3 @@ export async function listRecordIds(db: DbOrTx, layerId: number): Promise<number
   return rows.map((r) => r.id);
 }
 
-export { inArray, layers, ConflictError };

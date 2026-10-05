@@ -7,3 +7,4 @@ storage
 dist-scripts
 playwright-report
 test-results
+public/maplibre-gl-*.mjs

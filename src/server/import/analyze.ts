@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { DbOrTx } from '@/db/client';
 import { attachments, importRemovals, importRows, imports, records } from '@/db/schema';
+import type { ImportProgress } from '@/db/schema/imports';
 import type { AnalyzeImportData } from '@/shared/schemas/imports';
 import type { Actor } from '../auth/session';
 import { ConflictError, ValidationError, isAppError } from '../errors';
@@ -9,18 +10,72 @@ import { enqueue } from '../jobs/boss';
 import { logger } from '../logger';
 import { requireLayer, type LayerRow } from '../services/_shared';
 import { buildIdentity } from '../services/duplicates';
-import { analyzeRow, createBulkContext, initialResolution, resolveMapping, validateMapping } from './analysis';
+import {
+  analyzeRow,
+  createBulkContext,
+  initialResolution,
+  resolveMapping,
+  validateMapping,
+} from './analysis';
 import { assertOwnImport, requireImport } from './service';
 import { readImportTable, type ImportRow } from './source';
 
 type NewImportRow = typeof importRows.$inferInsert;
+
+/**
+ * `progress` guarda además el orden original de los encabezados (`headers`): JSONB no conserva el orden de las
+ * claves de `raw`/`columnMapping`, y la revisión y el CSV de errores necesitan mostrar las columnas como en el archivo.
+ */
+type ImportProgressExt = ImportProgress & { headers?: string[] };
+
+export function headersOf(imp: Pick<ImportRow, 'progress' | 'columnMapping'>): string[] {
+  const fromProgress = (imp.progress as ImportProgressExt | null)?.headers;
+  return fromProgress?.length ? fromProgress : Object.keys(imp.columnMapping);
+}
+
+/** Nuevo `progress` conservando `headers`. */
+export function withProgress(imp: Pick<ImportRow, 'progress'>, next: ImportProgress): ImportProgress {
+  const headers = (imp.progress as ImportProgressExt | null)?.headers;
+  return (headers ? { ...next, headers } : next) as ImportProgress;
+}
+
+/** Inserción en lote con un solo parámetro JSON (mucho más rápido que un INSERT multi-fila de 1000 × 11 parámetros). */
+async function insertImportRows(db: DbOrTx, importId: string, batch: NewImportRow[]): Promise<void> {
+  if (batch.length === 0) return;
+  const payload = JSON.stringify(
+    batch.map((r) => ({
+      row_number: r.rowNumber,
+      raw: r.raw,
+      parsed: r.parsed ?? null,
+      status: r.status,
+      messages: r.messages ?? [],
+      duplicate_of: r.duplicateOf ?? [],
+      file_duplicate_of: r.fileDuplicateOf ?? null,
+      resolution: r.resolution ?? null,
+      update_target_id: r.updateTargetId ?? null,
+    })),
+  );
+  await db.execute(sql`
+    INSERT INTO import_rows (import_id, row_number, raw, parsed, status, messages, duplicate_of, file_duplicate_of, resolution, update_target_id)
+    SELECT ${importId}::uuid, r.row_number, r.raw, r.parsed, r.status::import_row_status, r.messages, r.duplicate_of, r.file_duplicate_of,
+           r.resolution::import_row_resolution, r.update_target_id
+    FROM jsonb_to_recordset(${payload}::jsonb) AS r(
+      row_number int, raw jsonb, parsed jsonb, status text, messages jsonb, duplicate_of jsonb, file_duplicate_of int, resolution text, update_target_id int
+    )
+  `);
+}
 
 const ANALYZABLE_STATUSES = new Set<ImportRow['status']>(['UPLOADED', 'REVIEW', 'FAILED']);
 
 /**
  * `POST /api/imports/:id/analyze` (§8.5): valida el mapeo, guarda las opciones y encola `import.analyze`.
  */
-export async function startAnalyze(db: DbOrTx, actor: Actor, id: string, input: AnalyzeImportData): Promise<void> {
+export async function startAnalyze(
+  db: DbOrTx,
+  actor: Actor,
+  id: string,
+  input: AnalyzeImportData,
+): Promise<void> {
   const imp = await requireImport(db, id);
   assertOwnImport(actor, imp);
   if (!ANALYZABLE_STATUSES.has(imp.status)) {
@@ -35,9 +90,12 @@ export async function startAnalyze(db: DbOrTx, actor: Actor, id: string, input: 
   validateMapping(layer, input, table.headers);
 
   const lastRow = table.rows[table.rows.length - 1]?.rowNumber ?? 0;
-  if (lastRow === 0) throw new ValidationError('El archivo no tiene filas con datos debajo de los encabezados.');
+  if (lastRow === 0)
+    throw new ValidationError('El archivo no tiene filas con datos debajo de los encabezados.');
   if (input.rowFrom && input.rowFrom > lastRow) {
-    throw new ValidationError(`La fila inicial (${input.rowFrom}) es mayor que la última fila con datos del archivo (${lastRow}).`);
+    throw new ValidationError(
+      `La fila inicial (${input.rowFrom}) es mayor que la última fila con datos del archivo (${lastRow}).`,
+    );
   }
 
   await db.transaction(async (tx) => {
@@ -55,7 +113,13 @@ export async function startAnalyze(db: DbOrTx, actor: Actor, id: string, input: 
         geocode: input.geocode,
         fullReplace: input.fullReplace,
         status: 'ANALYZING',
-        progress: { phase: 'queued', done: 0, total: 0, pendingGeocode: 0 },
+        progress: {
+          phase: 'queued',
+          done: 0,
+          total: 0,
+          pendingGeocode: 0,
+          headers: table.headers,
+        } as ImportProgress,
         errorMessage: null,
         analyzedAt: null,
       })
@@ -90,7 +154,10 @@ export async function runAnalyze(db: DbOrTx, importId: string, deps: AnalyzeDeps
     const total = rows.length;
 
     const setProgress = (phase: string, done: number) =>
-      db.update(imports).set({ progress: { phase, done, total, pendingGeocode: 0 } }).where(eq(imports.id, importId));
+      db
+        .update(imports)
+        .set({ progress: withProgress(imp, { phase, done, total, pendingGeocode: 0 }) })
+        .where(eq(imports.id, importId));
 
     await setProgress('preparing', 0);
     const ctx = await createBulkContext(db, layer, mapping, rows, imp.geocode, { geocoder: deps.geocoder });
@@ -102,7 +169,7 @@ export async function runAnalyze(db: DbOrTx, importId: string, deps: AnalyzeDeps
 
     const flush = async () => {
       if (batch.length === 0) return;
-      await db.insert(importRows).values(batch);
+      await insertImportRows(db, importId, batch);
       done += batch.length;
       batch = [];
       await setProgress('analyzing', done);
@@ -140,14 +207,21 @@ export async function runAnalyze(db: DbOrTx, importId: string, deps: AnalyzeDeps
         status: 'REVIEW',
         analyzedAt: new Date(),
         totalRows: total,
-        progress: { phase: 'review', done: total, total, pendingGeocode: pendingGeocode.length },
+        progress: withProgress(imp, {
+          phase: 'review',
+          done: total,
+          total,
+          pendingGeocode: pendingGeocode.length,
+        }),
       })
       .where(eq(imports.id, importId));
 
     // Las direcciones que el padrón no ubicó siguen en segundo plano (§8.7), una tarea por fila.
     for (let i = 0; i < pendingGeocode.length; i += 100) {
       await Promise.all(
-        pendingGeocode.slice(i, i + 100).map((rowNumber) => enqueue('import.geocode-external', { importId, rowNumber })),
+        pendingGeocode
+          .slice(i, i + 100)
+          .map((rowNumber) => enqueue('import.geocode-external', { importId, rowNumber })),
       );
     }
   } catch (err) {
@@ -157,7 +231,7 @@ export async function runAnalyze(db: DbOrTx, importId: string, deps: AnalyzeDeps
       : 'No se pudo analizar el archivo. Revisa que la hoja y la fila de encabezados sean correctas e intenta de nuevo.';
     await db
       .update(imports)
-      .set({ status: 'FAILED', errorMessage: message, progress: { phase: 'failed' } })
+      .set({ status: 'FAILED', errorMessage: message, progress: withProgress(imp, { phase: 'failed' }) })
       .where(eq(imports.id, importId));
   }
 }
@@ -167,7 +241,12 @@ export async function runAnalyze(db: DbOrTx, importId: string, deps: AnalyzeDeps
  * No borrables: con adjuntos o con correlativo asignado por la plataforma. Los creados en la plataforma
  * (no por una importación) se marcan con esa razón para revisarlos con cuidado.
  */
-export async function computeRemovals(db: DbOrTx, imp: ImportRow, layer: LayerRow, fileIdentityKeys: Set<string>): Promise<number> {
+async function computeRemovals(
+  db: DbOrTx,
+  imp: ImportRow,
+  layer: LayerRow,
+  fileIdentityKeys: Set<string>,
+): Promise<number> {
   const existing = await db
     .select({
       id: records.id,
@@ -197,7 +276,13 @@ export async function computeRemovals(db: DbOrTx, imp: ImportRow, layer: LayerRo
     const imported = await db
       .selectDistinct({ recordId: importRows.recordId })
       .from(importRows)
-      .where(and(isNotNull(importRows.recordId), inArray(importRows.recordId, part), eq(importRows.action, 'created')));
+      .where(
+        and(
+          isNotNull(importRows.recordId),
+          inArray(importRows.recordId, part),
+          eq(importRows.action, 'created'),
+        ),
+      );
     for (const r of imported) if (r.recordId) fromImports.add(r.recordId);
   }
 
@@ -213,7 +298,15 @@ export async function computeRemovals(db: DbOrTx, imp: ImportRow, layer: LayerRo
     } else if (!fromImports.has(m.id)) {
       reason = 'Creado en la plataforma (no por una importación)';
     }
-    return { importId: imp.id, recordId: m.id, deletable, reason, resolution: 'keep', deleted: false, snapshot: null };
+    return {
+      importId: imp.id,
+      recordId: m.id,
+      deletable,
+      reason,
+      resolution: 'keep',
+      deleted: false,
+      snapshot: null,
+    };
   });
 
   for (let i = 0; i < values.length; i += 1000) {

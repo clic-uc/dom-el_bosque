@@ -30,7 +30,10 @@
     "geo:import": "tsx scripts/geo-import.ts",
     "auth:create-admin": "tsx scripts/create-admin.ts",
     "e2e:seed": "tsx scripts/e2e-seed-users.ts",
-    "knip": "knip"
+    "knip": "knip",
+    "map:worker": "node scripts/copy-maplibre-worker.mjs",
+    "predev": "node scripts/copy-maplibre-worker.mjs",
+    "prebuild": "node scripts/copy-maplibre-worker.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -43,8 +46,6 @@
     "better-auth": "^1.7.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "cmdk": "^1.1.1",
-    "date-fns": "^4.4.0",
     "drizzle-orm": "^0.45.3",
     "iconv-lite": "^0.7.3",
     "lucide-react": "^1.52.0",
@@ -57,7 +58,6 @@
     "postgres": "^3.4.9",
     "radix-ui": "^1.6.7",
     "react": "^19.3.0",
-    "react-day-picker": "^10.0.2",
     "react-dom": "^19.3.0",
     "react-hook-form": "^7.89.0",
     "react-map-gl": "^8.1.3",

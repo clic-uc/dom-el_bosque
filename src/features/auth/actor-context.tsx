@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import { can, type AppAction, type Role } from '@/shared/permissions';
+import { can, type AppAction } from '@/shared/permissions';
 import type { CurrentUser } from '@/shared/types';
 
 const ActorContext = createContext<CurrentUser | null>(null);
@@ -17,12 +17,8 @@ export function useActor(): CurrentUser {
   return actor;
 }
 
-/** Rol efectivo (`null` = "Sin rol", se comporta como visor). La autorización real siempre es en el servidor. */
-export function useCurrentRole(): Role | null {
-  return useActor().role;
-}
-
+/** `role` null = "Sin rol", se comporta como visor. La autorización real siempre es en el servidor. */
 export function useCan(): (action: AppAction) => boolean {
-  const role = useCurrentRole();
+  const role = useActor().role;
   return (action) => can(role, action);
 }

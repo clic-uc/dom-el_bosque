@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { importStatuses } from '../constants';
-import { boolish, latSchema, lonSchema, paginationSchema } from './common';
+import { latSchema, lonSchema, paginationSchema } from './common';
 import { importMessageCodes } from './import-rows';
 
 /** Destinos especiales del mapeo de columnas (además de `field.key`) (§5.6). */
@@ -109,4 +109,3 @@ export const importUploadFieldsSchema = z.object({
   layerId: z.coerce.number().int().positive(),
 });
 
-export const isBoolishTrue = (v: unknown) => boolish.safeParse(v).data === true;

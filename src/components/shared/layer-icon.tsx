@@ -1,6 +1,7 @@
 'use client';
 
 import { Building2, icons, type LucideProps } from 'lucide-react';
+import { createElement } from 'react';
 import { DEFAULT_LAYER_ICON_COLOR } from '@/shared/constants';
 
 /** kebab-case ('building-2') → PascalCase ('Building2'), como exporta `lucide-react`. */
@@ -23,6 +24,6 @@ type Props = LucideProps & { name: string | null | undefined; color?: string };
 
 /** Ícono de una capa por nombre lucide kebab-case y color (fallback building-2 azul). */
 export function LayerIcon({ name, color = DEFAULT_LAYER_ICON_COLOR, ...props }: Props) {
-  const Icon = getLucideIcon(name);
-  return <Icon color={color} strokeWidth={2} aria-hidden {...props} />;
+  // `createElement` con el componente resuelto por nombre: no se crea un componente nuevo en cada render.
+  return createElement(getLucideIcon(name), { color, strokeWidth: 2, 'aria-hidden': true, ...props });
 }

@@ -27,7 +27,7 @@ export type ParseCsvOptions = {
  * Elige el delimitador más consistente en las primeras 50 líneas con contenido. A diferencia de la detección de
  * PapaParse, tolera filas de título sin delimitador sobre los encabezados (frecuentes en planillas municipales).
  */
-export function guessDelimiter(text: string): string {
+function guessDelimiter(text: string): string {
   const lines = text
     .split(/\r\n|\n|\r/)
     .filter((l) => l.trim() !== '')
@@ -44,7 +44,10 @@ export function guessDelimiter(text: string): string {
   return best.score > 0 ? best.delimiter : ';';
 }
 
-export function parseCsvRecords(text: string, delimiter?: string | null): { records: string[][]; delimiter: string } {
+function parseCsvRecords(
+  text: string,
+  delimiter?: string | null,
+): { records: string[][]; delimiter: string } {
   const result = Papa.parse<string[]>(text, {
     header: false,
     delimiter: delimiter || guessDelimiter(text),

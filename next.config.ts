@@ -4,9 +4,12 @@ import createMDX from '@next/mdx';
 const tileHosts = ['https://tiles.openfreemap.org', 'https://tile.openstreetmap.org'];
 
 // La geocodificación externa (Nominatim/Photon) se hace desde el servidor: no necesita CSP.
+// En desarrollo React y el HMR necesitan eval(); en producción nunca se permite.
+const isDev = process.env.NODE_ENV !== 'production';
+
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline' blob:${isDev ? " 'unsafe-eval'" : ''}`,
   "style-src 'self' 'unsafe-inline'",
   `connect-src 'self' ${tileHosts.join(' ')}`,
   "img-src 'self' data: blob: https:",

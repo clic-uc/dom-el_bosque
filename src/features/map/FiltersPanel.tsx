@@ -1,7 +1,7 @@
 'use client';
 
 import { Search } from 'lucide-react';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { ErrorState, LoadingState } from '@/components/shared/states';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -26,7 +26,17 @@ type Props = {
 
 const EMPTY_LABEL = '(Vacío)';
 
-function ValueList({ field, options, selected, onChange }: { field: LayerField; options: string[]; selected: string[]; onChange: (values: string[]) => void }) {
+function ValueList({
+  field,
+  options,
+  selected,
+  onChange,
+}: {
+  field: LayerField;
+  options: string[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+}) {
   const id = useId();
   const [search, setSearch] = useState('');
   const shown = useMemo(() => {
@@ -42,18 +52,40 @@ function ValueList({ field, options, selected, onChange }: { field: LayerField; 
     <div className="space-y-2">
       {options.length > 8 ? (
         <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`Buscar en ${field.label}`} aria-label={`Buscar valores de ${field.label}`} className="h-11 pl-9 text-base" />
+          <Search
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={`Buscar en ${field.label}`}
+            aria-label={`Buscar valores de ${field.label}`}
+            className="h-11 pl-9 text-base"
+          />
         </div>
       ) : null}
-      <ul className="max-h-56 space-y-0.5 overflow-y-auto rounded-md border p-1" aria-label={`Valores de ${field.label}`}>
-        {shown.length === 0 ? <li className="px-2 py-2 text-sm text-muted-foreground">Ningún valor coincide.</li> : null}
+      <ul
+        className="max-h-56 space-y-0.5 overflow-y-auto rounded-md border p-1"
+        aria-label={`Valores de ${field.label}`}
+      >
+        {shown.length === 0 ? (
+          <li className="px-2 py-2 text-sm text-muted-foreground">Ningún valor coincide.</li>
+        ) : null}
         {shown.map((v) => {
           const cid = `${id}-${v || 'vacio'}`;
           return (
             <li key={v} className="flex min-h-10 items-center gap-3 rounded-sm px-2 hover:bg-muted">
-              <Checkbox id={cid} className="size-5" checked={selected.includes(v)} onCheckedChange={() => toggle(v)} />
-              <Label htmlFor={cid} className={`flex-1 cursor-pointer py-2 text-base font-normal ${v === '' ? 'text-muted-foreground italic' : ''}`}>
+              <Checkbox
+                id={cid}
+                className="size-5"
+                checked={selected.includes(v)}
+                onCheckedChange={() => toggle(v)}
+              />
+              <Label
+                htmlFor={cid}
+                className={`flex-1 cursor-pointer py-2 text-base font-normal ${v === '' ? 'text-muted-foreground italic' : ''}`}
+              >
                 {v === '' ? EMPTY_LABEL : v}
               </Label>
             </li>
@@ -69,19 +101,13 @@ function ValueList({ field, options, selected, onChange }: { field: LayerField; 
   );
 }
 
-/** Panel de filtros de la capa de trabajo (§10.2). Aplicar/Limpiar actualizan la URL. */
+/** Panel de filtros de la capa de trabajo (§10.2). Aplicar/Limpiar actualizan la URL. El contenedor lo monta con `key={layer.id}`. */
 export function FiltersPanel({ layer, filters, loc, num, onApply, onClose }: Props) {
   const id = useId();
   const options = useFilterOptions(layer.id);
   const [draft, setDraft] = useState<Record<string, string[]>>(filters);
   const [draftLoc, setDraftLoc] = useState<LocationFilter | null>(loc);
   const [draftNum, setDraftNum] = useState<NumberFilter | null>(num);
-
-  useEffect(() => {
-    setDraft(filters);
-    setDraftLoc(loc);
-    setDraftNum(num);
-  }, [filters, loc, num, layer.id]);
 
   const autoField = layer.fields.find((f) => f.type === 'autonumber');
   const fields = layer.fields.filter((f) => f.type !== 'autonumber');
@@ -130,7 +156,11 @@ export function FiltersPanel({ layer, filters, loc, num, onApply, onClose }: Pro
     >
       <div className="space-y-6">
         <PanelSection title="Ubicación">
-          <RadioGroup value={draftLoc ?? 'all'} onValueChange={(v) => setDraftLoc(v === 'all' ? null : (v as LocationFilter))} className="gap-1">
+          <RadioGroup
+            value={draftLoc ?? 'all'}
+            onValueChange={(v) => setDraftLoc(v === 'all' ? null : (v as LocationFilter))}
+            className="gap-1"
+          >
             {[
               { v: 'all', label: 'Todos los registros' },
               { v: 'none', label: 'Sin coordenadas (solo en la tabla)' },
@@ -148,7 +178,11 @@ export function FiltersPanel({ layer, filters, loc, num, onApply, onClose }: Pro
 
         {autoField ? (
           <PanelSection title={autoField.label}>
-            <RadioGroup value={draftNum ?? 'all'} onValueChange={(v) => setDraftNum(v === 'all' ? null : (v as NumberFilter))} className="gap-1">
+            <RadioGroup
+              value={draftNum ?? 'all'}
+              onValueChange={(v) => setDraftNum(v === 'all' ? null : (v as NumberFilter))}
+              className="gap-1"
+            >
               {[
                 { v: 'all', label: 'Todos' },
                 { v: 'with', label: 'Con número' },
@@ -168,7 +202,11 @@ export function FiltersPanel({ layer, filters, loc, num, onApply, onClose }: Pro
         {options.isPending ? (
           <LoadingState rows={4} label="Cargando los valores de los campos…" />
         ) : options.isError ? (
-          <ErrorState title="No se pudieron cargar los filtros" message={errorMessage(options.error)} onRetry={() => void options.refetch()} />
+          <ErrorState
+            title="No se pudieron cargar los filtros"
+            message={errorMessage(options.error)}
+            onRetry={() => void options.refetch()}
+          />
         ) : (
           fields.map((f) => {
             const opt = options.data?.[f.key];
@@ -176,20 +214,33 @@ export function FiltersPanel({ layer, filters, loc, num, onApply, onClose }: Pro
             return (
               <PanelSection key={f.key} title={f.label}>
                 {Array.isArray(opt) ? (
-                  <ValueList field={f} options={opt} selected={selected} onChange={(v) => setField(f.key, v)} />
+                  <ValueList
+                    field={f}
+                    options={opt}
+                    selected={selected}
+                    onChange={(v) => setField(f.key, v)}
+                  />
                 ) : (
                   <div className="space-y-1.5">
                     <Label htmlFor={`${id}-f-${f.key}`} className="text-base font-normal">
                       Empieza con…
                     </Label>
-                    <Input id={`${id}-f-${f.key}`} className="h-11 text-base" value={selected[0] ?? ''} onChange={(e) => setField(f.key, e.target.value ? [e.target.value] : [])} placeholder="Escribe el inicio del valor" />
+                    <Input
+                      id={`${id}-f-${f.key}`}
+                      className="h-11 text-base"
+                      value={selected[0] ?? ''}
+                      onChange={(e) => setField(f.key, e.target.value ? [e.target.value] : [])}
+                      placeholder="Escribe el inicio del valor"
+                    />
                   </div>
                 )}
               </PanelSection>
             );
           })
         )}
-        {!options.isPending && fields.length === 0 ? <p className="text-sm text-muted-foreground">Esta capa no tiene campos para filtrar.</p> : null}
+        {!options.isPending && fields.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Esta capa no tiene campos para filtrar.</p>
+        ) : null}
       </div>
     </SidePanel>
   );

@@ -12,11 +12,23 @@ import { RecordsTable } from '@/features/records/RecordsTable';
 import { RoleSheet } from '@/features/roles/RoleSheet';
 import { cn } from '@/lib/utils';
 import type { Department } from '@/shared/constants';
-import type { GeocodeResult, LayerWithCount, RecordDetail, RecordListItem, RoleRecordItem } from '@/shared/types';
+import type {
+  GeocodeResult,
+  LayerWithCount,
+  RecordDetail,
+  RecordListItem,
+  RoleRecordItem,
+} from '@/shared/types';
 import { CoordinateUpdateDialog, type CoordinateChangeRequest } from './CoordinateUpdateDialog';
 import { FiltersPanel } from './FiltersPanel';
 import { DEFAULT_HEAT_SETTINGS, type HeatSettings } from './HeatmapPanel';
-import { locationToParams, useInvalidateLayerData, useLayersQuery, type FeatureParams, type RecordsPageParams } from './hooks';
+import {
+  locationToParams,
+  useInvalidateLayerData,
+  useLayersQuery,
+  type FeatureParams,
+  type RecordsPageParams,
+} from './hooks';
 import { LayersSidebar } from './LayersSidebar';
 import { MapController, MapControllerContext } from './map-controller';
 import { MapView, type TempMarker } from './MapView';
@@ -25,7 +37,8 @@ import { RecordSidePanel } from './RecordSidePanel';
 import { Toolbar } from './Toolbar';
 import { countActiveFilters, useMapUrlState } from './url-state';
 
-type LayerDialogState = { mode: 'create'; department?: Department } | { mode: 'edit'; layer: LayerWithCount } | null;
+type LayerDialogState =
+  { mode: 'create'; department?: Department } | { mode: 'edit'; layer: LayerWithCount } | null;
 
 /** Espacio de trabajo `/map` (§10.2): sidebar de capas, toolbar, mapa o tabla, paneles derechos y diálogos. */
 export function MapWorkspace() {
@@ -53,6 +66,8 @@ function MapWorkspaceInner() {
   const [importLayerId, setImportLayerId] = useState<number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  /** Cambia en cada apertura: el diálogo de creación se monta limpio (sin efectos de reinicio). */
+  const [createSession, setCreateSession] = useState(0);
   const [pickActive, setPickActive] = useState(false);
   const [picked, setPicked] = useState<{ lat: number; lon: number; at: number } | null>(null);
   const [coordRequest, setCoordRequest] = useState<CoordinateChangeRequest | null>(null);
@@ -77,9 +92,19 @@ function MapWorkspaceInner() {
     if (!initialized.current) {
       initialized.current = true;
       // Enlace compartido sin registro/rol/polígono abierto: encuadrar la capa.
-      if (state.record === null && state.role === null && state.polygon === null) controller.requestFitToLayer(state.layer!);
+      if (state.record === null && state.role === null && state.polygon === null)
+        controller.requestFitToLayer(state.layer!);
     }
-  }, [layersQuery.data, state.layer, state.overlays, state.record, state.role, state.polygon, url, controller]);
+  }, [
+    layersQuery.data,
+    state.layer,
+    state.overlays,
+    state.record,
+    state.role,
+    state.polygon,
+    url,
+    controller,
+  ]);
 
   // El marcador temporal de "Ir a dirección" desaparece solo.
   useEffect(() => {
@@ -89,11 +114,21 @@ function MapWorkspaceInner() {
   }, [tempMarker]);
 
   const workingParams = useMemo<FeatureParams>(
-    () => ({ search: state.q || undefined, filters: state.filters, ...locationToParams(state.loc, state.num) }),
+    () => ({
+      search: state.q || undefined,
+      filters: state.filters,
+      ...locationToParams(state.loc, state.num),
+    }),
     [state.q, state.filters, state.loc, state.num],
   );
   const tableParams = useMemo<RecordsPageParams>(
-    () => ({ ...workingParams, page: state.page, pageSize: state.pageSize, sort: state.sort, dir: state.dir }),
+    () => ({
+      ...workingParams,
+      page: state.page,
+      pageSize: state.pageSize,
+      sort: state.sort,
+      dir: state.dir,
+    }),
     [workingParams, state.page, state.pageSize, state.sort, state.dir],
   );
 
@@ -149,7 +184,8 @@ function MapWorkspaceInner() {
 
   const onCreated = useCallback(
     (record: RecordDetail) => {
-      if (record.layerId !== state.layer && !state.overlays.includes(record.layerId)) url.toggleOverlay(record.layerId);
+      if (record.layerId !== state.layer && !state.overlays.includes(record.layerId))
+        url.toggleOverlay(record.layerId);
       flyToRecord(record.lat, record.lon);
       url.openRecord(record.id);
       if (state.view === 'table') url.setView('map');
@@ -169,7 +205,8 @@ function MapWorkspaceInner() {
 
   const onRequestCoordinateChange = useCallback((req: CoordinateChangeRequest) => setCoordRequest(req), []);
   const onOpenSidebar = useCallback(() => {
-    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) setSidebarCollapsed(false);
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches)
+      setSidebarCollapsed(false);
     else setMobileSidebar(true);
   }, []);
 
@@ -276,12 +313,18 @@ function MapWorkspaceInner() {
             onGoToAddress={onGoToAddress}
             onImport={() => workingLayer && setImportLayerId(workingLayer.id)}
             onExport={() => setExportOpen(true)}
-            onCreate={() => setCreateOpen(true)}
+            onCreate={() => {
+              setCreateSession((n) => n + 1);
+              setCreateOpen(true);
+            }}
             onViewChange={url.setView}
           />
 
           <div className="flex min-h-0 flex-1">
-            <main className="relative min-w-0 flex-1" aria-label={state.view === 'table' ? 'Tabla de registros' : 'Mapa'}>
+            <main
+              className="relative min-w-0 flex-1"
+              aria-label={state.view === 'table' ? 'Tabla de registros' : 'Mapa'}
+            >
               <div className={cn('absolute inset-0', state.view === 'table' && 'hidden')}>
                 <MapView
                   layers={layers}
@@ -317,7 +360,12 @@ function MapWorkspaceInner() {
                     onViewOnMap={onViewOnMap}
                   />
                 ) : (
-                  <EmptyState icon={Layers} title="Elige una capa de trabajo" description="Marca una capa en el panel de la izquierda para ver sus registros en la tabla." className="h-full" />
+                  <EmptyState
+                    icon={Layers}
+                    title="Elige una capa de trabajo"
+                    description="Marca una capa en el panel de la izquierda para ver sus registros en la tabla."
+                    className="h-full"
+                  />
                 )
               ) : null}
             </main>
@@ -367,13 +415,24 @@ function MapWorkspaceInner() {
       ) : null}
 
       {importLayerId !== null && can('imports.write') ? (
-        <ImportWizard open onOpenChange={(o) => !o && setImportLayerId(null)} layerId={importLayerId} onCompleted={(layerId) => void invalidateLayer(layerId)} />
+        <ImportWizard
+          open
+          onOpenChange={(o) => !o && setImportLayerId(null)}
+          layerId={importLayerId}
+          onCompleted={(layerId) => void invalidateLayer(layerId)}
+        />
       ) : null}
 
-      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} layers={layers} defaultLayerId={state.layer} />
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        layers={layers}
+        defaultLayerId={state.layer}
+      />
 
       {can('records.write') ? (
         <CreateRecordDialog
+          key={createSession}
           open={createOpen}
           onOpenChange={(o) => {
             setCreateOpen(o);

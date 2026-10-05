@@ -31,5 +31,8 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|logo_el_bosque.png|.*\\.(?:png|jpg|svg|ico|webp)$).*)'],
+  // Los estáticos de `public/` (incluido el worker de MapLibre) no pasan por el chequeo de sesión.
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|logo_el_bosque.png|.*\\.(?:png|jpg|jpeg|svg|ico|webp|js|mjs|css|map|woff2?)$).*)',
+  ],
 };

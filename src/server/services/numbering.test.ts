@@ -37,7 +37,7 @@ async function insertRecord(layerId: number, attributes: Record<string, unknown>
 }
 
 // Las suites de servicios comparten la BD de prueba: un advisory lock las serializa aunque vitest las ejecute en paralelo.
-let lock: Awaited<ReturnType<typeof sqlClient.reserve>>;
+let lock: Awaited<ReturnType<typeof sqlClient.reserve>> | undefined;
 beforeAll(async () => {
   lock = await sqlClient.reserve();
   await lock`SELECT pg_advisory_lock(730001)`;
@@ -48,8 +48,10 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await lock`SELECT pg_advisory_unlock(730001)`;
-  lock.release();
+  if (lock) {
+    await lock`SELECT pg_advisory_unlock(730001)`;
+    lock.release();
+  }
   await sqlClient.end({ timeout: 5 });
 });
 

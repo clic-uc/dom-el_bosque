@@ -2,7 +2,6 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -13,7 +12,6 @@ import { authClient, authErrorMessage } from '@/lib/auth-client';
 import { signInSchema, type SignInInput } from '@/shared/schemas/users';
 
 export function SignInForm({ next }: { next?: string }) {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const form = useForm<SignInInput>({
@@ -30,8 +28,9 @@ export function SignInForm({ next }: { next?: string }) {
     }
     const mustChange = (data?.user as { mustChangePassword?: boolean } | undefined)?.mustChangePassword;
     const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : '/map';
-    router.replace(mustChange ? '/account/password' : safeNext);
-    router.refresh();
+    // Recarga completa a propósito: el shell del servidor debe leer la sesión nueva y respetar `?next=`
+    // (con router.replace + router.refresh el redirect de "/" ganaba y siempre caía en /map).
+    window.location.assign(mustChange ? '/account/password' : safeNext);
   }
 
   return (

@@ -1,7 +1,6 @@
 import { and, eq, ne, sql, type SQL } from 'drizzle-orm';
 import type { DbOrTx } from '@/db/client';
 import { records } from '@/db/schema';
-import type { LayerField } from '@/shared/schemas/layers';
 import type { DuplicateConflictDetails, DuplicatesPreview } from '@/shared/types';
 import { formatFieldValue } from '@/lib/format';
 import { ConflictError } from '../errors';
@@ -158,4 +157,3 @@ export async function previewDuplicates(db: DbOrTx, layer: LayerRow, uniqueKeys:
   };
 }
 
-export type { LayerField };

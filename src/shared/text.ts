@@ -48,7 +48,3 @@ export function initials(name: string): string {
   return (first + last).toUpperCase() || '?';
 }
 
-/** Formato chileno de miles: 6124 → '6.124'. */
-export function formatNumberCl(n: number, maxFractionDigits = 2): string {
-  return new Intl.NumberFormat('es-CL', { maximumFractionDigits: maxFractionDigits }).format(n);
-}

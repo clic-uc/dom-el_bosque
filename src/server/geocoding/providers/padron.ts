@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { DbOrTx } from '@/db/client';
 import type { GeocodeCandidate, GeocodeResult } from '@/shared/schemas/geocode';
-import type { NormalizedAddress } from '../normalize-address';
 import type { GeocodeProvider } from './types';
 
 /**
@@ -113,4 +112,3 @@ function round6(v: number): number {
   return Math.round(v * 1_000_000) / 1_000_000;
 }
 
-export type { NormalizedAddress };

@@ -2,18 +2,46 @@
 
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useQueries } from '@tanstack/react-query';
-import type { GeoJSONSource, StyleSpecification } from 'maplibre-gl';
+import { setWorkerUrl, type GeoJSONSource, type StyleSpecification } from 'maplibre-gl';
+
+// Turbopack no resuelve la URL del worker desde `import.meta.url`: lo servimos desde `public/`
+// (lo copia `scripts/copy-maplibre-worker.mjs` en predev/prebuild) y cumple la CSP `worker-src 'self'`.
+if (typeof window !== 'undefined') setWorkerUrl('/maplibre-gl-worker.mjs');
 import { Move, X } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import MapGL, { Layer, Marker, NavigationControl, Popup, ScaleControl, Source, useMap, type MapLayerMouseEvent, type MapRef, type MarkerDragEvent } from 'react-map-gl/maplibre';
+import MapGL, {
+  Layer,
+  Marker,
+  NavigationControl,
+  Popup,
+  ScaleControl,
+  Source,
+  useMap,
+  type MapLayerMouseEvent,
+  type MapRef,
+  type MarkerDragEvent,
+} from 'react-map-gl/maplibre';
 import { Button } from '@/components/ui/button';
 import { useCan } from '@/features/auth/actor-context';
 import { formatFieldValue } from '@/lib/format';
-import { COMUNA_BOUNDS, MAP_CENTER, MAP_INITIAL_ZOOM, MAP_MAX_BOUNDS_MARGIN, polygonStyles, type PolygonKind } from '@/shared/constants';
+import {
+  COMUNA_BOUNDS,
+  MAP_CENTER,
+  MAP_INITIAL_ZOOM,
+  MAP_MAX_BOUNDS_MARGIN,
+  polygonStyles,
+  type PolygonKind,
+} from '@/shared/constants';
 import type { LayerWithCount, RecordFeatureCollection } from '@/shared/types';
 import type { CoordinateChangeRequest } from './CoordinateUpdateDialog';
 import type { HeatSettings } from './HeatmapPanel';
-import { featuresQueryOptions, useLayerFeatures, usePolygons, useRecordDetail, type FeatureParams } from './hooks';
+import {
+  featuresQueryOptions,
+  useLayerFeatures,
+  usePolygons,
+  useRecordDetail,
+  type FeatureParams,
+} from './hooks';
 import { bboxOfPoints, type MapController } from './map-controller';
 import { ensureMarkerImages, installMarkerImageFallback, markerImageName } from './marker-images';
 import type { HeatMode } from './url-state';
@@ -68,7 +96,12 @@ const MAX_BOUNDS: [number, number, number, number] = [
 const TEXT_FONT = ['Noto Sans Bold'];
 
 /** Orden de dibujo (de abajo hacia arriba): polígonos → calor → superpuestas → trabajo → selección. */
-const ANCHORS = { polygons: 'anchor-polygons', heat: 'anchor-heat', overlays: 'anchor-overlays', working: 'anchor-working' } as const;
+const ANCHORS = {
+  polygons: 'anchor-polygons',
+  heat: 'anchor-heat',
+  overlays: 'anchor-overlays',
+  working: 'anchor-working',
+} as const;
 
 function Anchors() {
   return (
@@ -88,13 +121,35 @@ function PolygonLayers({ kind }: { kind: PolygonKind }) {
   if (!data) return null;
   return (
     <Source id={sourceId} type="geojson" data={data}>
-      <Layer id={`poly-fill-${kind}`} type="fill" beforeId={ANCHORS.polygons} paint={{ 'fill-color': style.line, 'fill-opacity': style.fillOpacity }} />
-      <Layer id={`poly-line-${kind}`} type="line" beforeId={ANCHORS.polygons} paint={{ 'line-color': style.line, 'line-width': style.width, 'line-opacity': style.opacity }} />
+      <Layer
+        id={`poly-fill-${kind}`}
+        type="fill"
+        beforeId={ANCHORS.polygons}
+        paint={{ 'fill-color': style.line, 'fill-opacity': style.fillOpacity }}
+      />
+      <Layer
+        id={`poly-line-${kind}`}
+        type="line"
+        beforeId={ANCHORS.polygons}
+        paint={{ 'line-color': style.line, 'line-width': style.width, 'line-opacity': style.opacity }}
+      />
     </Source>
   );
 }
 
-function RecordsLayer({ layer, params, isWorking, pointsVisible, controller }: { layer: LayerWithCount; params: FeatureParams; isWorking: boolean; pointsVisible: boolean; controller: MapController }) {
+function RecordsLayer({
+  layer,
+  params,
+  isWorking,
+  pointsVisible,
+  controller,
+}: {
+  layer: LayerWithCount;
+  params: FeatureParams;
+  isWorking: boolean;
+  pointsVisible: boolean;
+  controller: MapController;
+}) {
   const { current: map } = useMap();
   const { data } = useLayerFeatures(layer.id, params);
   const sourceId = `records-${layer.id}`;
@@ -117,7 +172,14 @@ function RecordsLayer({ layer, params, isWorking, pointsVisible, controller }: {
 
   const visibility = pointsVisible ? 'visible' : 'none';
   return (
-    <Source id={sourceId} type="geojson" data={data ?? EMPTY_FC} cluster clusterMaxZoom={16} clusterRadius={50}>
+    <Source
+      id={sourceId}
+      type="geojson"
+      data={data ?? EMPTY_FC}
+      cluster
+      clusterMaxZoom={16}
+      clusterRadius={50}
+    >
       <Layer
         id={`clusters-${layer.id}`}
         type="circle"
@@ -136,7 +198,13 @@ function RecordsLayer({ layer, params, isWorking, pointsVisible, controller }: {
         type="symbol"
         beforeId={beforeId}
         filter={['has', 'point_count']}
-        layout={{ visibility, 'text-field': ['get', 'point_count_abbreviated'], 'text-font': TEXT_FONT, 'text-size': 13, 'text-allow-overlap': true }}
+        layout={{
+          visibility,
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-font': TEXT_FONT,
+          'text-size': 13,
+          'text-allow-overlap': true,
+        }}
         paint={{ 'text-color': '#ffffff' }}
       />
       <Layer
@@ -163,17 +231,30 @@ function percentile95(values: number[]): number {
   return sorted[idx] || 1;
 }
 
-function HeatmapLayer({ layers, mode, settings }: { layers: LayerWithCount[]; mode: HeatMode; settings: HeatSettings }) {
+function HeatmapLayer({
+  layers,
+  mode,
+  settings,
+}: {
+  layers: LayerWithCount[];
+  mode: HeatMode;
+  settings: HeatSettings;
+}) {
   const weighted = mode === 'value';
-  const results = useQueries({
+  // `combine` está memoizado por TanStack: la colección unida solo se recalcula cuando cambian los datos.
+  const { data, wMax } = useQueries({
     queries: layers.map((l) => featuresQueryOptions(l.id, { weight: weighted })),
+    combine: (results) => {
+      const features = results.flatMap((r) => r.data?.features ?? []);
+      const values = weighted
+        ? features.map((f) => (typeof f.properties.w === 'number' ? f.properties.w : 0)).filter((w) => w > 0)
+        : [];
+      return {
+        data: { type: 'FeatureCollection', features } as RecordFeatureCollection,
+        wMax: percentile95(values),
+      };
+    },
   });
-  const { data, wMax } = useMemo(() => {
-    const features = results.flatMap((r) => r.data?.features ?? []);
-    const values = weighted ? features.map((f) => (typeof f.properties.w === 'number' ? f.properties.w : 0)).filter((w) => w > 0) : [];
-    return { data: { type: 'FeatureCollection', features } as RecordFeatureCollection, wMax: percentile95(values) };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- depende de los datos, no de los objetos de resultado
-  }, [...results.map((r) => r.data), weighted]);
 
   return (
     <Source id="heatmap" type="geojson" data={data}>
@@ -182,45 +263,97 @@ function HeatmapLayer({ layers, mode, settings }: { layers: LayerWithCount[]; mo
         type="heatmap"
         beforeId={ANCHORS.heat}
         paint={{
-          'heatmap-weight': weighted ? ['interpolate', ['linear'], ['coalesce', ['get', 'w'], 0], 0, 0, wMax, 1] : 1,
+          'heatmap-weight': weighted
+            ? ['interpolate', ['linear'], ['coalesce', ['get', 'w'], 0], 0, 0, wMax, 1]
+            : 1,
           'heatmap-intensity': settings.intensity,
           'heatmap-radius': settings.radius,
           'heatmap-opacity': 0.8,
-          'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(33,102,172,0)', 0.2, '#67a9cf', 0.4, '#a1dab4', 0.6, '#fecc5c', 0.8, '#fd8d3c', 1, '#e31a1c'],
+          'heatmap-color': [
+            'interpolate',
+            ['linear'],
+            ['heatmap-density'],
+            0,
+            'rgba(33,102,172,0)',
+            0.2,
+            '#67a9cf',
+            0.4,
+            '#a1dab4',
+            0.6,
+            '#fecc5c',
+            0.8,
+            '#fd8d3c',
+            1,
+            '#e31a1c',
+          ],
         }}
       />
     </Source>
   );
 }
 
-function SelectedRecord({ recordId, canEdit, controller, onRequestCoordinateChange }: { recordId: number; canEdit: boolean; controller: MapController; onRequestCoordinateChange: (req: CoordinateChangeRequest) => void }) {
+function SelectedRecord({
+  recordId,
+  canEdit,
+  controller,
+  onRequestCoordinateChange,
+}: {
+  recordId: number;
+  canEdit: boolean;
+  controller: MapController;
+  onRequestCoordinateChange: (req: CoordinateChangeRequest) => void;
+}) {
   const { data } = useRecordDetail(recordId);
-  const [dragPos, setDragPos] = useState<{ lat: number; lon: number } | null>(null);
+  // El arrastre guarda desde qué posición partió: si el registro cambia de coordenadas (guardado), deja de aplicar.
+  const [drag, setDrag] = useState<{ base: string; lat: number; lon: number } | null>(null);
 
   useEffect(() => {
-    controller.register({ resetDragMarker: () => setDragPos(null) });
+    controller.register({ resetDragMarker: () => setDrag(null) });
     return () => controller.register({ resetDragMarker: undefined });
   }, [controller]);
 
-  useEffect(() => setDragPos(null), [recordId, data?.lat, data?.lon]);
-
   if (!data || data.lat === null || data.lon === null) return null;
-  const pos = dragPos ?? { lat: data.lat, lon: data.lon };
+  const base = `${data.id}:${data.lat}:${data.lon}`;
+  const pos =
+    drag && drag.base === base ? { lat: drag.lat, lon: drag.lon } : { lat: data.lat, lon: data.lon };
   const fc: RecordFeatureCollection = {
     type: 'FeatureCollection',
-    features: [{ type: 'Feature', id: data.id, geometry: { type: 'Point', coordinates: [pos.lon, pos.lat] }, properties: { id: data.id, roleId: data.roleId, coordsSource: data.coordsSource ?? 'own' } }],
+    features: [
+      {
+        type: 'Feature',
+        id: data.id,
+        geometry: { type: 'Point', coordinates: [pos.lon, pos.lat] },
+        properties: { id: data.id, roleId: data.roleId, coordsSource: data.coordsSource ?? 'own' },
+      },
+    ],
   };
 
   function onDragEnd(e: MarkerDragEvent) {
     const to = { lat: e.lngLat.lat, lon: e.lngLat.lng };
-    setDragPos(to);
-    onRequestCoordinateChange({ recordId: data!.id, layerId: data!.layerId, roleId: data!.roleId, from: { lat: data!.lat!, lon: data!.lon! }, to });
+    setDrag({ base, ...to });
+    onRequestCoordinateChange({
+      recordId: data!.id,
+      layerId: data!.layerId,
+      roleId: data!.roleId,
+      from: { lat: data!.lat!, lon: data!.lon! },
+      to,
+    });
   }
 
   return (
     <>
       <Source id="selected" type="geojson" data={fc}>
-        <Layer id="points-selected" type="circle" paint={{ 'circle-radius': 26, 'circle-color': '#73308a', 'circle-opacity': 0.18, 'circle-stroke-color': '#73308a', 'circle-stroke-width': 3 }} />
+        <Layer
+          id="points-selected"
+          type="circle"
+          paint={{
+            'circle-radius': 26,
+            'circle-color': '#73308a',
+            'circle-opacity': 0.18,
+            'circle-stroke-color': '#73308a',
+            'circle-stroke-width': 3,
+          }}
+        />
       </Source>
       {canEdit ? (
         <Marker longitude={pos.lon} latitude={pos.lat} draggable onDragEnd={onDragEnd} anchor="center">
@@ -241,7 +374,25 @@ function SelectedRecord({ recordId, canEdit, controller, onRequestCoordinateChan
 type Hover = { lon: number; lat: number; key: string; title: string; lines: string[] };
 
 function MapViewInner(props: MapViewProps) {
-  const { layers, workingLayerId, overlayLayerIds, workingParams, selectedRecordId, polygonKinds, heat, heatLayerIds, heatSettings, pickActive, tempMarker, controller, onPick, onCancelPick, onOpenRecord, onOpenPolygon, onRequestCoordinateChange } = props;
+  const {
+    layers,
+    workingLayerId,
+    overlayLayerIds,
+    workingParams,
+    selectedRecordId,
+    polygonKinds,
+    heat,
+    heatLayerIds,
+    heatSettings,
+    pickActive,
+    tempMarker,
+    controller,
+    onPick,
+    onCancelPick,
+    onOpenRecord,
+    onOpenPolygon,
+    onRequestCoordinateChange,
+  } = props;
   const can = useCan();
   const canEdit = can('records.write');
   const mapRef = useRef<MapRef | null>(null);
@@ -249,7 +400,13 @@ function MapViewInner(props: MapViewProps) {
 
   const byId = useMemo(() => new Map(layers.map((l) => [l.id, l])), [layers]);
   const workingLayer = workingLayerId !== null ? byId.get(workingLayerId) : undefined;
-  const overlays = useMemo(() => overlayLayerIds.map((id) => byId.get(id)).filter((l): l is LayerWithCount => !!l && l.id !== workingLayerId), [overlayLayerIds, byId, workingLayerId]);
+  const overlays = useMemo(
+    () =>
+      overlayLayerIds
+        .map((id) => byId.get(id))
+        .filter((l): l is LayerWithCount => !!l && l.id !== workingLayerId),
+    [overlayLayerIds, byId, workingLayerId],
+  );
   const heatLayers = useMemo(() => {
     if (!heat) return [];
     const visible = [workingLayer, ...overlays].filter((l): l is LayerWithCount => !!l);
@@ -317,7 +474,17 @@ function MapViewInner(props: MapViewProps) {
       }
       if (layerId.startsWith('poly-fill-')) {
         const key = `p${f.properties.id}`;
-        setHover((h) => (h?.key === key ? h : { key, lon: e.lngLat.lng, lat: e.lngLat.lat, title: (f.properties.name as string | null) || 'Polígono sin nombre', lines: [] }));
+        setHover((h) =>
+          h?.key === key
+            ? h
+            : {
+                key,
+                lon: e.lngLat.lng,
+                lat: e.lngLat.lat,
+                title: (f.properties.name as string | null) || 'Polígono sin nombre',
+                lines: [],
+              },
+        );
       }
     },
     [describePoint],
@@ -335,11 +502,14 @@ function MapViewInner(props: MapViewProps) {
       const cluster = features.find((f) => f.layer.id.startsWith('clusters-'));
       if (cluster) {
         const map = mapRef.current?.getMap();
-        const source = map?.getSource(cluster.layer.id.replace('clusters-', 'records-')) as GeoJSONSource | undefined;
+        const source = map?.getSource(cluster.layer.id.replace('clusters-', 'records-')) as
+          GeoJSONSource | undefined;
         const clusterId = cluster.properties.cluster_id as number;
         const center = (cluster.geometry as GeoJSON.Point).coordinates as [number, number];
         if (source && map) {
-          void source.getClusterExpansionZoom(clusterId).then((zoom) => map.easeTo({ center, zoom: Math.min(zoom, 19), duration: 500 }));
+          void source
+            .getClusterExpansionZoom(clusterId)
+            .then((zoom) => map.easeTo({ center, zoom: Math.min(zoom, 19), duration: 500 }));
         }
         return;
       }
@@ -380,14 +550,48 @@ function MapViewInner(props: MapViewProps) {
         {polygonKinds.map((k) => (
           <PolygonLayers key={k} kind={k} />
         ))}
-        {heat && heatLayers.length ? <HeatmapLayer layers={heatLayers} mode={heat} settings={heatSettings} /> : null}
+        {heat && heatLayers.length ? (
+          <HeatmapLayer layers={heatLayers} mode={heat} settings={heatSettings} />
+        ) : null}
         {overlays.map((l) => (
-          <RecordsLayer key={l.id} layer={l} params={EMPTY_PARAMS} isWorking={false} pointsVisible={pointsVisible} controller={controller} />
+          <RecordsLayer
+            key={l.id}
+            layer={l}
+            params={EMPTY_PARAMS}
+            isWorking={false}
+            pointsVisible={pointsVisible}
+            controller={controller}
+          />
         ))}
-        {workingLayer ? <RecordsLayer key={workingLayer.id} layer={workingLayer} params={workingParams} isWorking pointsVisible={pointsVisible} controller={controller} /> : null}
-        {selectedRecordId !== null ? <SelectedRecord recordId={selectedRecordId} canEdit={canEdit && !pickActive} controller={controller} onRequestCoordinateChange={onRequestCoordinateChange} /> : null}
+        {workingLayer ? (
+          <RecordsLayer
+            key={workingLayer.id}
+            layer={workingLayer}
+            params={workingParams}
+            isWorking
+            pointsVisible={pointsVisible}
+            controller={controller}
+          />
+        ) : null}
+        {selectedRecordId !== null ? (
+          <SelectedRecord
+            recordId={selectedRecordId}
+            canEdit={canEdit && !pickActive}
+            controller={controller}
+            onRequestCoordinateChange={onRequestCoordinateChange}
+          />
+        ) : null}
         {hover && !pickActive ? (
-          <Popup longitude={hover.lon} latitude={hover.lat} closeButton={false} closeOnClick={false} offset={18} anchor="bottom" className="pointer-events-none" maxWidth="280px">
+          <Popup
+            longitude={hover.lon}
+            latitude={hover.lat}
+            closeButton={false}
+            closeOnClick={false}
+            offset={18}
+            anchor="bottom"
+            className="pointer-events-none"
+            maxWidth="280px"
+          >
             <div className="space-y-0.5 text-sm">
               <p className="font-semibold">{hover.title}</p>
               {hover.lines.map((l) => (
@@ -406,7 +610,15 @@ function MapViewInner(props: MapViewProps) {
                 <div className="-mt-1 h-3 w-0.5 bg-primary" />
               </div>
             </Marker>
-            <Popup longitude={tempMarker.lon} latitude={tempMarker.lat} closeButton={false} closeOnClick={false} offset={30} anchor="bottom" maxWidth="280px">
+            <Popup
+              longitude={tempMarker.lon}
+              latitude={tempMarker.lat}
+              closeButton={false}
+              closeOnClick={false}
+              offset={30}
+              anchor="bottom"
+              maxWidth="280px"
+            >
               <p className="text-sm font-medium">{tempMarker.label}</p>
             </Popup>
           </>
@@ -414,7 +626,11 @@ function MapViewInner(props: MapViewProps) {
       </MapGL>
 
       {pickActive ? (
-        <div role="status" aria-live="assertive" className="absolute top-3 left-1/2 z-(--z-index-map-controls) flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-4 py-2 shadow-lg">
+        <div
+          role="status"
+          aria-live="assertive"
+          className="absolute top-3 left-1/2 z-(--z-index-map-controls) flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-4 py-2 shadow-lg"
+        >
           <p className="text-base font-medium">Haz clic en el mapa para seleccionar la ubicación</p>
           <Button variant="outline" size="lg" className="h-10" onClick={onCancelPick}>
             <X aria-hidden /> Cancelar

@@ -9,7 +9,9 @@ export async function cleanupExpiredImports(db: DbOrTx, now = new Date()): Promi
   const expired = await db
     .select({ id: imports.id, fileKey: imports.fileKey })
     .from(imports)
-    .where(and(lt(imports.expiresAt, now), inArray(imports.status, ['UPLOADED', 'ANALYZING', 'REVIEW', 'FAILED'])));
+    .where(
+      and(lt(imports.expiresAt, now), inArray(imports.status, ['UPLOADED', 'ANALYZING', 'REVIEW', 'FAILED'])),
+    );
   for (const imp of expired) {
     try {
       await discardRows(db, imp);
@@ -17,6 +19,7 @@ export async function cleanupExpiredImports(db: DbOrTx, now = new Date()): Promi
       logger.error({ err, importId: imp.id }, 'import.cleanup: no se pudo descartar el borrador');
     }
   }
-  if (expired.length) logger.info({ count: expired.length }, 'import.cleanup: borradores vencidos descartados');
+  if (expired.length)
+    logger.info({ count: expired.length }, 'import.cleanup: borradores vencidos descartados');
   return expired.length;
 }

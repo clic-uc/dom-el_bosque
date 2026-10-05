@@ -95,7 +95,7 @@ describe('RecordsTable', () => {
         const sp = new URL(lastUrl, 'http://x').searchParams;
         const page = Number(sp.get('page') ?? 1);
         const body: Paginated<RecordListItem> = {
-          data: [record(page * 10 + 1), record(page * 10 + 2, { lat: null, lon: null, coordsSource: null, attributes: { propietario: 'Sin número' } })],
+          data: [record(page * 10 + 1), record(page * 10 + 2, { lat: null, lon: null, coordsSource: null, attributes: { propietario: 'Vecina sin permiso' } })],
           total: 120,
           page,
           pageSize: Number(sp.get('pageSize') ?? 50),

@@ -10,7 +10,8 @@ import { invalidateFilterOptions } from '../services/filters';
 import { ensureRoles } from '../services/roles';
 import { requireImport } from './service';
 
-const jsonbOrNull = (v: unknown) => (v === null || v === undefined ? sql`NULL::jsonb` : sql`${JSON.stringify(v)}::jsonb`);
+const jsonbOrNull = (v: unknown) =>
+  v === null || v === undefined ? sql`NULL::jsonb` : sql`${JSON.stringify(v)}::jsonb`;
 const tsOrNull = (v: string | null | undefined) => (v ? sql`${v}::timestamptz` : sql`NULL::timestamptz`);
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -23,14 +24,21 @@ function chunk<T>(arr: T[], size: number): T[][] {
  * `POST /api/imports/:id/revert` (§8.5 "Después"): borra los creados, restaura los actualizados desde
  * `previousSnapshot` y reinserta los borrados por reemplazo completo con su id original. Editor: solo propias.
  */
-export async function revertImport(db: DbOrTx, actor: Actor, id: string, input: { force: boolean }): Promise<ImportRevertResult> {
+export async function revertImport(
+  db: DbOrTx,
+  actor: Actor,
+  id: string,
+  input: { force: boolean },
+): Promise<ImportRevertResult> {
   const imp = await requireImport(db, id);
   if (actor.role !== 'admin' && imp.userId !== actor.userId) {
     throw new ForbiddenError('Solo quien hizo esta importación o un administrador puede revertirla.');
   }
   if (imp.status !== 'COMPLETED' || !imp.committedAt) {
     throw new ConflictError(
-      imp.status === 'REVERTED' ? 'Esta importación ya fue revertida.' : 'Solo se puede revertir una importación completada.',
+      imp.status === 'REVERTED'
+        ? 'Esta importación ya fue revertida.'
+        : 'Solo se puede revertir una importación completada.',
     );
   }
 
@@ -50,7 +58,13 @@ export async function revertImport(db: DbOrTx, actor: Actor, id: string, input: 
   const removed = await db
     .select({ recordId: importRemovals.recordId, snapshot: importRemovals.snapshot })
     .from(importRemovals)
-    .where(and(eq(importRemovals.importId, id), eq(importRemovals.deleted, true), isNotNull(importRemovals.snapshot)));
+    .where(
+      and(
+        eq(importRemovals.importId, id),
+        eq(importRemovals.deleted, true),
+        isNotNull(importRemovals.snapshot),
+      ),
+    );
 
   const touched = [...created, ...updated.map((u) => u.id)];
   if (!input.force && touched.length) {
@@ -138,7 +152,9 @@ export async function revertImport(db: DbOrTx, actor: Actor, id: string, input: 
       result.reinsertedRecords += inserted.length;
     }
     if (removed.length) {
-      await tx.execute(sql`SELECT setval(pg_get_serial_sequence('records', 'id'), GREATEST((SELECT COALESCE(MAX(id), 1) FROM records), 1))`);
+      await tx.execute(
+        sql`SELECT setval(pg_get_serial_sequence('records', 'id'), GREATEST((SELECT COALESCE(MAX(id), 1) FROM records), 1))`,
+      );
     }
 
     await tx

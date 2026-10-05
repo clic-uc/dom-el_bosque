@@ -8,7 +8,11 @@ import type { UploadFile } from '../upload';
 
 export type Cell = string | number | boolean | Date | null;
 
-export function csvBuffer(headers: string[], rows: Cell[][], opts: { delimiter?: string; encoding?: 'utf8' | 'win1252'; bom?: boolean } = {}): Buffer {
+export function csvBuffer(
+  headers: string[],
+  rows: Cell[][],
+  opts: { delimiter?: string; encoding?: 'utf8' | 'win1252'; bom?: boolean } = {},
+): Buffer {
   const d = opts.delimiter ?? ';';
   const esc = (v: Cell) => {
     if (v === null) return '';
@@ -43,7 +47,8 @@ export function fakeFile(name: string, buffer: Buffer): UploadFile {
   return {
     name,
     size: buffer.byteLength,
-    arrayBuffer: async () => buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer,
+    arrayBuffer: async () =>
+      buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer,
   };
 }
 

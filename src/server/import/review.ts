@@ -3,7 +3,6 @@ import type { DbOrTx } from '@/db/client';
 import { importRemovals, importRows, imports, records } from '@/db/schema';
 import type { Paginated } from '@/shared/schemas/common';
 import type { GeocodeCandidate, RecordGeocodeInfo } from '@/shared/schemas/geocode';
-import type { ImportMessage, ParsedRow } from '@/shared/schemas/import-rows';
 import type {
   ImportRemovalsPatch,
   ImportRowPatch,
@@ -11,7 +10,13 @@ import type {
   ImportRowsBulkInput,
   ImportRowsQuery,
 } from '@/shared/schemas/imports';
-import type { ImportRemovalDto, ImportRowDto, ImportStatusCounts, ImportStatusDto, ImportStatusFull } from '@/shared/types';
+import type {
+  ImportRemovalDto,
+  ImportRowDto,
+  ImportStatusCounts,
+  ImportStatusDto,
+  ImportStatusFull,
+} from '@/shared/types';
 import type { Actor } from '../auth/session';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
 import type { Geocoder } from '../geocoding';
@@ -29,7 +34,7 @@ import {
   statusFromMessages,
   type AnalysisContext,
 } from './analysis';
-import { pendingGeocodeOf } from './analyze';
+import { headersOf, pendingGeocodeOf } from './analyze';
 import { assertOwnImport, jsonify, requireImport, toImportItem } from './service';
 import type { ImportRow } from './source';
 import { getImportSource } from './upload';
@@ -38,11 +43,15 @@ type ImportRowRecord = typeof importRows.$inferSelect;
 
 // ---------- estado ----------
 
-export async function getStatus(db: DbOrTx, id: string, opts: { includeSource?: boolean } = {}): Promise<ImportStatusFull> {
+export async function getStatus(
+  db: DbOrTx,
+  id: string,
+  opts: { includeSource?: boolean } = {},
+): Promise<ImportStatusFull> {
   const imp = await requireImport(db, id);
   const layer = await requireLayer(db, imp.layerId);
 
-  const [byStatus, [unresolved], codeRows, removalRows, next] = await Promise.all([
+  const [byStatus, [unresolved], codeRows, removalRows, next, byResolution] = await Promise.all([
     db
       .select({ status: importRows.status, n: count() })
       .from(importRows)
@@ -51,7 +60,9 @@ export async function getStatus(db: DbOrTx, id: string, opts: { includeSource?: 
     db
       .select({ n: count() })
       .from(importRows)
-      .where(and(eq(importRows.importId, id), eq(importRows.status, 'duplicate'), isNull(importRows.resolution))),
+      .where(
+        and(eq(importRows.importId, id), eq(importRows.status, 'duplicate'), isNull(importRows.resolution)),
+      ),
     db.execute<{ code: string; n: number }>(sql`
       SELECT m->>'code' AS code, count(DISTINCT r.row_number)::int AS n
       FROM import_rows r, jsonb_array_elements(r.messages) m
@@ -69,9 +80,23 @@ export async function getStatus(db: DbOrTx, id: string, opts: { includeSource?: 
           .where(eq(importRemovals.importId, id))
       : Promise.resolve(null),
     previewNextNumber(db, imp.layerId).catch(() => null),
+    db
+      .select({ resolution: importRows.resolution, n: count() })
+      .from(importRows)
+      .where(and(eq(importRows.importId, id), eq(importRows.status, 'duplicate')))
+      .groupBy(importRows.resolution),
   ]);
+  const resolutions = { skip: 0, update: 0, create: 0 };
+  for (const r of byResolution) if (r.resolution) resolutions[r.resolution] = Number(r.n);
 
-  const counts: ImportStatusCounts = { valid: 0, warning: 0, duplicate: 0, error: 0, excluded: 0, unresolvedDuplicates: Number(unresolved?.n ?? 0) };
+  const counts: ImportStatusCounts = {
+    valid: 0,
+    warning: 0,
+    duplicate: 0,
+    error: 0,
+    excluded: 0,
+    unresolvedDuplicates: Number(unresolved?.n ?? 0),
+  };
   for (const r of byStatus) counts[r.status] = Number(r.n);
   const codeCounts: Record<string, number> = {};
   for (const r of codeRows) codeCounts[r.code] = Number(r.n);
@@ -84,9 +109,16 @@ export async function getStatus(db: DbOrTx, id: string, opts: { includeSource?: 
     counts,
     codeCounts,
     ...(removals
-      ? { removals: { total: Number(removals.total), toDelete: Number(removals.toDelete), notDeletable: Number(removals.notDeletable) } }
+      ? {
+          removals: {
+            total: Number(removals.total),
+            toDelete: Number(removals.toDelete),
+            notDeletable: Number(removals.notDeletable),
+          },
+        }
       : {}),
-    nextNumber: next && autoField ? { fieldKey: next.fieldKey, label: autoField.label, next: next.next } : null,
+    nextNumber:
+      next && autoField ? { fieldKey: next.fieldKey, label: autoField.label, next: next.next } : null,
   };
 
   const full: ImportStatusFull = {
@@ -100,6 +132,8 @@ export async function getStatus(db: DbOrTx, id: string, opts: { includeSource?: 
       addressFieldKey: layer.addressFieldKey,
     },
     pendingGeocode: pendingGeocodeOf(imp),
+    headers: headersOf(imp),
+    resolutions,
   };
   if (opts.includeSource && imp.fileKey) {
     try {
@@ -116,7 +150,8 @@ export async function getStatus(db: DbOrTx, id: string, opts: { includeSource?: 
 function rowsWhere(id: string, filter: { status?: ImportRowStatus; code?: string }): SQL {
   const conds: SQL[] = [eq(importRows.importId, id)];
   if (filter.status) conds.push(eq(importRows.status, filter.status));
-  if (filter.code) conds.push(sql`${importRows.messages} @> ${JSON.stringify([{ code: filter.code }])}::jsonb`);
+  if (filter.code)
+    conds.push(sql`${importRows.messages} @> ${JSON.stringify([{ code: filter.code }])}::jsonb`);
   return and(...conds)!;
 }
 
@@ -128,7 +163,12 @@ async function attachExisting(db: DbOrTx, rows: ImportRowRecord[]): Promise<Impo
   }
   const existing = ids.size
     ? await db
-        .select({ id: records.id, roleId: records.roleId, attributes: records.attributes, updatedAt: records.updatedAt })
+        .select({
+          id: records.id,
+          roleId: records.roleId,
+          attributes: records.attributes,
+          updatedAt: records.updatedAt,
+        })
         .from(records)
         .where(inArray(records.id, [...ids]))
     : [];
@@ -155,7 +195,12 @@ export async function listRows(db: DbOrTx, id: string, q: ImportRowsQuery): Prom
       .offset((q.page - 1) * q.pageSize),
     db.select({ total: count() }).from(importRows).where(where),
   ]);
-  return { data: await attachExisting(db, rows), total: Number(totals[0]?.total ?? 0), page: q.page, pageSize: q.pageSize };
+  return {
+    data: await attachExisting(db, rows),
+    total: Number(totals[0]?.total ?? 0),
+    page: q.page,
+    pageSize: q.pageSize,
+  };
 }
 
 async function requireRow(db: DbOrTx, id: string, rowNumber: number): Promise<ImportRowRecord> {
@@ -201,7 +246,8 @@ async function reanalyze(
   const a = await analyzeRow(s.ctx, row.rowNumber, raw);
   let resolution = row.resolution;
   let updateTargetId = row.updateTargetId;
-  const stillValidUpdate = resolution === 'update' && updateTargetId !== null && a.duplicateOf.includes(updateTargetId);
+  const stillValidUpdate =
+    resolution === 'update' && updateTargetId !== null && a.duplicateOf.includes(updateTargetId);
   if (a.status !== 'duplicate' || (resolution === 'update' && !stillValidUpdate) || resolution === null) {
     const init = initialResolution(a, s.imp.duplicateStrategy);
     resolution = init.resolution;
@@ -219,14 +265,22 @@ async function reanalyze(
   };
 }
 
-function withRoleOverride(s: ReviewSession, raw: Record<string, string>, roleId: string | null): Record<string, string> {
+function withRoleOverride(
+  s: ReviewSession,
+  raw: Record<string, string>,
+  roleId: string | null,
+): Record<string, string> {
   const next = { ...raw };
   const header = s.ctx.mapping.roleHeader ?? RAW_OVERRIDE_KEYS.roleId;
   next[header] = roleId ?? '';
   return next;
 }
 
-function withCoordsOverride(s: ReviewSession, raw: Record<string, string>, coords: { lat: number; lon: number } | null): Record<string, string> {
+function withCoordsOverride(
+  s: ReviewSession,
+  raw: Record<string, string>,
+  coords: { lat: number; lon: number } | null,
+): Record<string, string> {
   const next = { ...raw };
   const latKey = s.ctx.mapping.latHeader ?? RAW_OVERRIDE_KEYS.lat;
   const lonKey = s.ctx.mapping.lonHeader ?? RAW_OVERRIDE_KEYS.lon;
@@ -243,9 +297,13 @@ function withCoordsOverride(s: ReviewSession, raw: Record<string, string>, coord
   return next;
 }
 
-function acceptLocation(row: Pick<ImportRowRecord, 'parsed' | 'messages' | 'status'>, location: { lat: number; lon: number; geocode: RecordGeocodeInfo }) {
+function acceptLocation(
+  row: Pick<ImportRowRecord, 'parsed' | 'messages' | 'status'>,
+  location: { lat: number; lon: number; geocode: RecordGeocodeInfo },
+) {
   const { parsed, messages } = applyLocation(row.parsed!, row.messages, location);
-  const status = row.status === 'valid' || row.status === 'warning' ? statusFromMessages(messages, false) : row.status;
+  const status =
+    row.status === 'valid' || row.status === 'warning' ? statusFromMessages(messages, false) : row.status;
   return { parsed, messages, status };
 }
 
@@ -282,7 +340,11 @@ export async function patchRow(
     if ((patch.lat == null) !== (patch.lon == null)) {
       throw new ValidationError('Latitud y longitud van juntas: indica las dos o ninguna.');
     }
-    raw = withCoordsOverride(s, raw, patch.lat != null && patch.lon != null ? { lat: patch.lat, lon: patch.lon } : null);
+    raw = withCoordsOverride(
+      s,
+      raw,
+      patch.lat != null && patch.lon != null ? { lat: patch.lat, lon: patch.lon } : null,
+    );
     needsReanalysis = true;
   }
   if (patch.acceptSuggestion) {
@@ -304,9 +366,18 @@ export async function patchRow(
       raw = withRoleOverride(s, raw, c.roleId);
       needsReanalysis = true;
     } else {
-      const address = s.layer.addressFieldKey ? String(row.parsed?.attributes[s.layer.addressFieldKey] ?? '') : '';
+      const address = s.layer.addressFieldKey
+        ? String(row.parsed?.attributes[s.layer.addressFieldKey] ?? '')
+        : '';
       const provider = String(approx?.data?.provider ?? 'padron');
-      set = { ...set, ...acceptLocation(row, { lat: c.lat, lon: c.lon, geocode: { provider, confidence: c.confidence, query: address } }) };
+      set = {
+        ...set,
+        ...acceptLocation(row, {
+          lat: c.lat,
+          lon: c.lon,
+          geocode: { provider, confidence: c.confidence, query: address },
+        }),
+      };
     }
   }
   if (patch.excluded === false && row.status === 'excluded') needsReanalysis = true;
@@ -359,7 +430,13 @@ export async function patchRow(
 }
 
 /** `POST /api/imports/:id/rows/bulk`: aplica una acción a todas las filas que calzan con el filtro. */
-export async function bulkRows(db: DbOrTx, actor: Actor, id: string, input: ImportRowsBulkInput, deps: ReviewDeps = {}): Promise<{ updated: number }> {
+export async function bulkRows(
+  db: DbOrTx,
+  actor: Actor,
+  id: string,
+  input: ImportRowsBulkInput,
+  deps: ReviewDeps = {},
+): Promise<{ updated: number }> {
   const s = await openSession(db, actor, id, deps);
   const where = rowsWhere(id, input.filter);
 
@@ -399,10 +476,17 @@ export async function bulkRows(db: DbOrTx, actor: Actor, id: string, input: Impo
       return { updated: res.length };
     }
     case 'include': {
-      const rows = await db.select().from(importRows).where(and(where, eq(importRows.status, 'excluded'))).orderBy(asc(importRows.rowNumber));
+      const rows = await db
+        .select()
+        .from(importRows)
+        .where(and(where, eq(importRows.status, 'excluded')))
+        .orderBy(asc(importRows.rowNumber));
       for (const row of rows) {
         const set = await reanalyze(s, row, row.raw);
-        await db.update(importRows).set(set).where(and(eq(importRows.importId, id), eq(importRows.rowNumber, row.rowNumber)));
+        await db
+          .update(importRows)
+          .set(set)
+          .where(and(eq(importRows.importId, id), eq(importRows.rowNumber, row.rowNumber)));
       }
       return { updated: rows.length };
     }
@@ -410,7 +494,13 @@ export async function bulkRows(db: DbOrTx, actor: Actor, id: string, input: Impo
       const rows = await db
         .select()
         .from(importRows)
-        .where(and(where, sql`${importRows.status} <> 'excluded'`, sql`(${importRows.parsed}->'suggestedLocation' IS NOT NULL AND ${importRows.parsed}->'suggestedLocation' <> 'null'::jsonb OR ${importRows.parsed}->>'suggestedRoleId' IS NOT NULL)`))
+        .where(
+          and(
+            where,
+            sql`${importRows.status} <> 'excluded'`,
+            sql`(${importRows.parsed}->'suggestedLocation' IS NOT NULL AND ${importRows.parsed}->'suggestedLocation' <> 'null'::jsonb OR ${importRows.parsed}->>'suggestedRoleId' IS NOT NULL)`,
+          ),
+        )
         .orderBy(asc(importRows.rowNumber));
       let updated = 0;
       for (const row of rows) {
@@ -421,7 +511,10 @@ export async function bulkRows(db: DbOrTx, actor: Actor, id: string, input: Impo
         } else if (row.parsed.suggestedLocation) {
           set = acceptLocation(row, row.parsed.suggestedLocation);
         } else continue;
-        await db.update(importRows).set(set).where(and(eq(importRows.importId, id), eq(importRows.rowNumber, row.rowNumber)));
+        await db
+          .update(importRows)
+          .set(set)
+          .where(and(eq(importRows.importId, id), eq(importRows.rowNumber, row.rowNumber)));
         updated++;
       }
       return { updated };
@@ -431,13 +524,25 @@ export async function bulkRows(db: DbOrTx, actor: Actor, id: string, input: Impo
 
 // ---------- registros que no vienen en el archivo (reemplazo completo) ----------
 
-export async function listRemovals(db: DbOrTx, id: string, q: { page: number; pageSize: number }): Promise<Paginated<ImportRemovalDto>> {
+export async function listRemovals(
+  db: DbOrTx,
+  id: string,
+  q: { page: number; pageSize: number },
+): Promise<Paginated<ImportRemovalDto>> {
   const imp = await requireImport(db, id);
   const layer = await requireLayer(db, imp.layerId);
   const where = eq(importRemovals.importId, id);
   const [rows, totals] = await Promise.all([
     db
-      .select({ removal: importRemovals, record: { id: records.id, roleId: records.roleId, attributes: records.attributes, createdBy: records.createdBy } })
+      .select({
+        removal: importRemovals,
+        record: {
+          id: records.id,
+          roleId: records.roleId,
+          attributes: records.attributes,
+          createdBy: records.createdBy,
+        },
+      })
       .from(importRemovals)
       .leftJoin(records, eq(records.id, importRemovals.recordId))
       .where(where)
@@ -450,7 +555,12 @@ export async function listRemovals(db: DbOrTx, id: string, q: { page: number; pa
     data: rows.map((r) => ({
       ...jsonify(r.removal),
       record: r.record?.id
-        ? { id: r.record.id, roleId: r.record.roleId, summary: buildSummary(layer.fields, r.record.attributes), createdBy: r.record.createdBy }
+        ? {
+            id: r.record.id,
+            roleId: r.record.roleId,
+            summary: buildSummary(layer.fields, r.record.attributes),
+            createdBy: r.record.createdBy,
+          }
         : null,
     })),
     total: Number(totals[0]?.total ?? 0),
@@ -459,7 +569,12 @@ export async function listRemovals(db: DbOrTx, id: string, q: { page: number; pa
   };
 }
 
-export async function patchRemovals(db: DbOrTx, actor: Actor, id: string, input: ImportRemovalsPatch): Promise<{ updated: number }> {
+export async function patchRemovals(
+  db: DbOrTx,
+  actor: Actor,
+  id: string,
+  input: ImportRemovalsPatch,
+): Promise<{ updated: number }> {
   const imp = await requireImport(db, id);
   assertOwnImport(actor, imp);
   requireReview(imp);
@@ -483,7 +598,9 @@ export async function discardImport(db: DbOrTx, actor: Actor, id: string): Promi
   const imp = await requireImport(db, id);
   assertOwnImport(actor, imp);
   if (!DISCARDABLE.has(imp.status)) {
-    throw new ConflictError('Solo se pueden descartar borradores. Una importación confirmada se puede revertir desde el historial.');
+    throw new ConflictError(
+      'Solo se pueden descartar borradores. Una importación confirmada se puede revertir desde el historial.',
+    );
   }
   await discardRows(db, imp);
 }
@@ -493,9 +610,10 @@ export async function discardRows(db: DbOrTx, imp: Pick<ImportRow, 'id' | 'fileK
   await db.transaction(async (tx) => {
     await tx.delete(importRows).where(eq(importRows.importId, imp.id));
     await tx.delete(importRemovals).where(eq(importRemovals.importId, imp.id));
-    await tx.update(imports).set({ status: 'DISCARDED', fileKey: null, progress: {} }).where(eq(imports.id, imp.id));
+    await tx
+      .update(imports)
+      .set({ status: 'DISCARDED', fileKey: null, progress: {} })
+      .where(eq(imports.id, imp.id));
   });
   if (imp.fileKey) await storage.delete(imp.fileKey);
 }
-
-export type { ImportMessage, ParsedRow };

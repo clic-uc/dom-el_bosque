@@ -13,27 +13,11 @@ import type {
   ImportRevertResult,
   Layer,
   LayerCounter,
-  LayerWithCount,
   Paginated,
   TypeConversionPreview,
 } from '@/shared/types';
 
 /** Hooks de datos de capas (§9). Todas las mutaciones invalidan `queryKeys.layers.all` y avisan con toasts. */
-
-export function useLayersQuery() {
-  return useQuery({
-    queryKey: queryKeys.layers.list(),
-    queryFn: () => api<LayerWithCount[]>('/api/layers'),
-  });
-}
-
-export function useLayerQuery(id: number | undefined) {
-  return useQuery({
-    queryKey: queryKeys.layers.detail(id ?? 0),
-    queryFn: () => api<LayerWithCount>(`/api/layers/${id}`),
-    enabled: id !== undefined,
-  });
-}
 
 export function useCreateLayer() {
   const qc = useQueryClient();

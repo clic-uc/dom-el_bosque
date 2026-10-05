@@ -48,7 +48,10 @@ export type RoleStatus = 'idle' | 'incomplete' | 'invalid' | 'checking' | 'exist
 export function RoleStatusBadge({ status, className }: { status: RoleStatus; className?: string }) {
   if (status === 'existing') {
     return (
-      <Badge className={cn('rounded-md bg-secondary-soft text-secondary-strong', className)} variant="outline">
+      <Badge
+        className={cn('rounded-md bg-secondary-soft text-secondary-strong', className)}
+        variant="outline"
+      >
         Rol existente
       </Badge>
     );
@@ -62,7 +65,10 @@ export function RoleStatusBadge({ status, className }: { status: RoleStatus; cla
   }
   if (status === 'superseded') {
     return (
-      <Badge className={cn('rounded-md border-amber-300 bg-amber-50 text-amber-900', className)} variant="outline">
+      <Badge
+        className={cn('rounded-md border-amber-300 bg-amber-50 text-amber-900', className)}
+        variant="outline"
+      >
         No vigente
       </Badge>
     );
@@ -87,7 +93,7 @@ export function RoleInput({
   const [focused, setFocused] = useState(false);
   const [touched, setTouched] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(-1);
+  const [rawActiveIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const parsed = useMemo(() => tryNormalizeRoleId(value), [value]);
@@ -101,6 +107,8 @@ export function RoleInput({
     [search.data, normalized, detail.data],
   );
   const open = focused && !dismissed && suggestions.length > 0 && !disabled;
+  // Si la lista cambió y el índice ya no existe, no hay opción activa (sin efecto ni render extra).
+  const activeIndex = rawActiveIndex < suggestions.length ? rawActiveIndex : -1;
 
   let status: RoleStatus = 'idle';
   if (value.trim() === '') status = 'idle';
@@ -114,15 +122,16 @@ export function RoleInput({
   const lastEmitted = useRef<string | null>(null);
   useEffect(() => {
     if (!onRoleResolved) return;
-    const key = status === 'existing' || status === 'superseded' ? `role:${detail.data!.id}` : status === 'checking' || status === 'incomplete' ? null : 'none';
+    const key =
+      status === 'existing' || status === 'superseded'
+        ? `role:${detail.data!.id}`
+        : status === 'checking' || status === 'incomplete'
+          ? null
+          : 'none';
     if (key === null || key === lastEmitted.current) return;
     lastEmitted.current = key;
     onRoleResolved(key === 'none' ? null : detail.data!);
   }, [status, detail.data, onRoleResolved]);
-
-  useEffect(() => {
-    setActiveIndex(-1);
-  }, [suggestions.length, value]);
 
   function pick(role: RoleDto) {
     onChange(role.id);
@@ -176,6 +185,7 @@ export function RoleInput({
               className="h-11 pr-10 font-mono text-base tracking-wide"
               onChange={(e) => {
                 setDismissed(false);
+                setActiveIndex(-1);
                 onChange(maskRoleInput(e.target.value));
               }}
               onFocus={() => setFocused(true)}
@@ -187,7 +197,10 @@ export function RoleInput({
               onKeyDown={onKeyDown}
             />
             {status === 'checking' || search.isFetching ? (
-              <Loader2 className="absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin text-muted-foreground" aria-hidden />
+              <Loader2
+                className="absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin text-muted-foreground"
+                aria-hidden
+              />
             ) : null}
           </div>
         </PopoverAnchor>
@@ -218,7 +231,9 @@ export function RoleInput({
                   {r.id}
                   {!r.vigente ? <RoleStatusBadge status="superseded" /> : null}
                 </span>
-                {r.address ? <span className="truncate text-sm text-muted-foreground">{r.address}</span> : null}
+                {r.address ? (
+                  <span className="truncate text-sm text-muted-foreground">{r.address}</span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -227,7 +242,9 @@ export function RoleInput({
 
       <div id={statusId} className="min-h-5 text-sm" aria-live="polite">
         {showError ? (
-          <p className="text-destructive">Escribe el rol como 00000-00000, solo con números (por ejemplo 4631-30).</p>
+          <p className="text-destructive">
+            Escribe el rol como 00000-00000, solo con números (por ejemplo 4631-30).
+          </p>
         ) : status === 'checking' ? (
           <p className="text-muted-foreground">Buscando el rol en el padrón…</p>
         ) : status === 'existing' || status === 'superseded' ? (
@@ -244,7 +261,9 @@ export function RoleInput({
         ) : status === 'new' ? (
           <div className="flex flex-wrap items-center gap-2">
             <RoleStatusBadge status="new" />
-            <span className="text-muted-foreground">Este rol no está en el padrón; se creará al guardar.</span>
+            <span className="text-muted-foreground">
+              Este rol no está en el padrón; se creará al guardar.
+            </span>
           </div>
         ) : null}
       </div>

@@ -24,11 +24,19 @@ const layer: LayerRow = {
   updatedAt: new Date(),
 };
 
-const base = { duplicateStrategy: 'ask' as const, keepExistingOnEmpty: true, geocode: true, fullReplace: false };
+const base = {
+  duplicateStrategy: 'ask' as const,
+  keepExistingOnEmpty: true,
+  geocode: true,
+  fullReplace: false,
+};
 
 describe('buildSuggestedMapping (§10.2 paso 2)', () => {
   it('mapea por label/key sin importar mayúsculas ni acentos, alias de rol y lat/lon', () => {
-    const m = buildSuggestedMapping(['ROL SII', 'n° permiso', 'DIRECCION', 'Latitud', 'lng', 'Observaciones', 'Otra'], layer);
+    const m = buildSuggestedMapping(
+      ['ROL SII', 'n° permiso', 'DIRECCION', 'Latitud', 'lng', 'Observaciones', 'Otra'],
+      layer,
+    );
     expect(m).toEqual({
       'ROL SII': 'roleId',
       'n° permiso': 'n_permiso',
@@ -50,25 +58,53 @@ describe('buildSuggestedMapping (§10.2 paso 2)', () => {
 
 describe('validateMapping (§8.5 "Analizar" paso 1)', () => {
   it('exige rol o dirección en capas con rol', () => {
-    expect(() => validateMapping(layer, { ...base, columnMapping: { A: 'n_permiso' } })).toThrow(/Rol SII o la del campo de dirección/);
-    expect(() => validateMapping(layer, { ...base, columnMapping: { A: 'n_permiso', B: 'direccion' } })).not.toThrow();
+    expect(() => validateMapping(layer, { ...base, columnMapping: { A: 'n_permiso' } })).toThrow(
+      /Rol SII o la del campo de dirección/,
+    );
+    expect(() =>
+      validateMapping(layer, { ...base, columnMapping: { A: 'n_permiso', B: 'direccion' } }),
+    ).not.toThrow();
   });
 
   it('exige los campos requeridos, lat/lon juntos y destinos sin repetir', () => {
-    expect(() => validateMapping(layer, { ...base, columnMapping: { A: 'roleId' } })).toThrow(/requerido "N° Permiso"/);
-    expect(() => validateMapping(layer, { ...base, columnMapping: { A: 'roleId', B: 'n_permiso', C: 'lat' } })).toThrow(/Latitud y longitud/);
-    expect(() => validateMapping(layer, { ...base, columnMapping: { A: 'roleId', B: 'n_permiso', C: 'n_permiso' } })).toThrow(/mismo destino/);
-    expect(() => validateMapping(layer, { ...base, columnMapping: { A: 'roleId', B: 'n_permiso', C: 'inexistente' } })).toThrow(/no es un campo/);
+    expect(() => validateMapping(layer, { ...base, columnMapping: { A: 'roleId' } })).toThrow(
+      /requerido "N° Permiso"/,
+    );
+    expect(() =>
+      validateMapping(layer, { ...base, columnMapping: { A: 'roleId', B: 'n_permiso', C: 'lat' } }),
+    ).toThrow(/Latitud y longitud/);
+    expect(() =>
+      validateMapping(layer, { ...base, columnMapping: { A: 'roleId', B: 'n_permiso', C: 'n_permiso' } }),
+    ).toThrow(/mismo destino/);
+    expect(() =>
+      validateMapping(layer, { ...base, columnMapping: { A: 'roleId', B: 'n_permiso', C: 'inexistente' } }),
+    ).toThrow(/no es un campo/);
   });
 
   it('reemplazo completo: requiere campos únicos mapeados y sin rango', () => {
-    expect(() => validateMapping({ ...layer, uniqueKeys: [] }, { ...base, fullReplace: true, columnMapping: { A: 'roleId', B: 'n_permiso' } })).toThrow(/campos únicos/);
-    expect(() => validateMapping(layer, { ...base, fullReplace: true, rowFrom: 2, columnMapping: { A: 'roleId', B: 'n_permiso' } })).toThrow(/rango/);
-    expect(() => validateMapping(layer, { ...base, fullReplace: true, columnMapping: { A: 'roleId', B: 'n_permiso' } })).not.toThrow();
+    expect(() =>
+      validateMapping(
+        { ...layer, uniqueKeys: [] },
+        { ...base, fullReplace: true, columnMapping: { A: 'roleId', B: 'n_permiso' } },
+      ),
+    ).toThrow(/campos únicos/);
+    expect(() =>
+      validateMapping(layer, {
+        ...base,
+        fullReplace: true,
+        rowFrom: 2,
+        columnMapping: { A: 'roleId', B: 'n_permiso' },
+      }),
+    ).toThrow(/rango/);
+    expect(() =>
+      validateMapping(layer, { ...base, fullReplace: true, columnMapping: { A: 'roleId', B: 'n_permiso' } }),
+    ).not.toThrow();
   });
 
   it('rechaza columnas que no existen en el archivo', () => {
-    expect(() => validateMapping(layer, { ...base, columnMapping: { A: 'roleId', B: 'n_permiso' } }, ['A'])).toThrow(/no existe en el archivo/);
+    expect(() =>
+      validateMapping(layer, { ...base, columnMapping: { A: 'roleId', B: 'n_permiso' } }, ['A']),
+    ).toThrow(/no existe en el archivo/);
   });
 });
 
@@ -78,8 +114,17 @@ describe('initialResolution (§8.5 paso 3)', () => {
     expect(initialResolution(dup, 'skip')).toEqual({ resolution: 'skip', updateTargetId: null });
     expect(initialResolution(dup, 'update')).toEqual({ resolution: 'update', updateTargetId: 7 });
     expect(initialResolution(dup, 'ask')).toEqual({ resolution: null, updateTargetId: null });
-    expect(initialResolution({ ...dup, duplicateOf: [7, 8] }, 'update')).toEqual({ resolution: null, updateTargetId: null });
-    expect(initialResolution({ ...dup, duplicateOf: [], fileDuplicateOf: 4 }, 'update')).toEqual({ resolution: null, updateTargetId: null });
-    expect(initialResolution({ status: 'valid', duplicateOf: [], fileDuplicateOf: null }, 'skip')).toEqual({ resolution: null, updateTargetId: null });
+    expect(initialResolution({ ...dup, duplicateOf: [7, 8] }, 'update')).toEqual({
+      resolution: null,
+      updateTargetId: null,
+    });
+    expect(initialResolution({ ...dup, duplicateOf: [], fileDuplicateOf: 4 }, 'update')).toEqual({
+      resolution: null,
+      updateTargetId: null,
+    });
+    expect(initialResolution({ status: 'valid', duplicateOf: [], fileDuplicateOf: null }, 'skip')).toEqual({
+      resolution: null,
+      updateTargetId: null,
+    });
   });
 });

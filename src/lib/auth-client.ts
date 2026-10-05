@@ -9,7 +9,6 @@ export const authClient = createAuthClient({
   plugins: [adminClient({ ac, roles }), inferAdditionalFields<Auth>()],
 });
 
-export type AuthSession = typeof authClient.$Infer.Session;
 
 /** Mensajes en español para los códigos de error de Better Auth (§10.1). */
 export function authErrorMessage(error: { code?: string; message?: string; status?: number } | null | undefined): string {

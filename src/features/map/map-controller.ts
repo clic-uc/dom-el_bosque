@@ -1,7 +1,7 @@
 'use client';
 
 import type { MapRef } from 'react-map-gl/maplibre';
-import { createContext, useContext } from 'react';
+import { createContext } from 'react';
 import { COMUNA_BOUNDS, MAP_CENTER, MAP_INITIAL_ZOOM } from '@/shared/constants';
 
 export type LngLatBBox = [west: number, south: number, east: number, north: number];
@@ -86,12 +86,6 @@ export class MapController {
 }
 
 export const MapControllerContext = createContext<MapController | null>(null);
-
-export function useMapController(): MapController {
-  const ctl = useContext(MapControllerContext);
-  if (!ctl) throw new Error('useMapController debe usarse dentro de MapWorkspace');
-  return ctl;
-}
 
 /** Caja envolvente de una colección de puntos `[lon, lat]`; `null` si no hay puntos. */
 export function bboxOfPoints(coords: Iterable<[number, number]>): LngLatBBox | null {
