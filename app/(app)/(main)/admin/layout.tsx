@@ -8,7 +8,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const actor = await getActor();
   if (actor.role !== 'admin') {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-slate-100 p-6">
+      <main className="flex min-h-app items-center justify-center bg-slate-100 p-6">
         <div className="w-full max-w-md rounded-xl border bg-white p-8 text-center shadow-sm">
           <ShieldOff className="mx-auto size-12 text-muted-foreground" aria-hidden />
           <h1 className="mt-4 text-2xl font-semibold text-primary-dark">Sin acceso</h1>

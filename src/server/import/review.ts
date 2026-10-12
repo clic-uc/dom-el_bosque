@@ -1,6 +1,7 @@
 import { and, asc, count, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type { DbOrTx } from '@/db/client';
 import { importRemovals, importRows, imports, records } from '@/db/schema';
+import { isAnalysisStalled } from '@/shared/capabilities';
 import type { Paginated } from '@/shared/schemas/common';
 import type { GeocodeCandidate, RecordGeocodeInfo } from '@/shared/schemas/geocode';
 import type {
@@ -134,6 +135,7 @@ export async function getStatus(
     pendingGeocode: pendingGeocodeOf(imp),
     headers: headersOf(imp),
     resolutions,
+    stalled: isAnalysisStalled(imp),
   };
   if (opts.includeSource && imp.fileKey) {
     try {

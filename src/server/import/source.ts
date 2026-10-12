@@ -26,6 +26,15 @@ export async function readImportTable(
     throw new ConflictError('El archivo de esta importación ya no está disponible. Vuelve a subirlo.');
   }
   const buffer = await storage.get(imp.fileKey);
+  return parseImportBuffer(buffer, imp, overrides);
+}
+
+/** Interpreta el contenido de una planilla (también antes de guardarla, al subirla). */
+export async function parseImportBuffer(
+  buffer: Buffer,
+  imp: Pick<ImportRow, 'fileType' | 'sheetName' | 'headerRow' | 'delimiter'>,
+  overrides: SourceOverrides = {},
+): Promise<ParsedTable & { headerRow: number }> {
   // `null` = volver a detectar la fila de encabezados; `undefined` = usar la guardada.
   const headerRow = overrides.headerRow === undefined ? imp.headerRow : overrides.headerRow;
   if (imp.fileType === 'xlsx') {

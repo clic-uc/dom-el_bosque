@@ -17,3 +17,10 @@ export const multiPolygonGeometry = customType<{ data: string; driverData: strin
     return 'geometry(MultiPolygon,4326)';
   },
 });
+
+/** Binario (`bytea`). El driver `postgres` lee y escribe `Buffer`. */
+export const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return 'bytea';
+  },
+});

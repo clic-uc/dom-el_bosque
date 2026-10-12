@@ -22,7 +22,14 @@ import {
 import { layers } from './layers';
 import { records } from './records';
 
-export type ImportProgress = { phase?: string; done?: number; total?: number; pendingGeocode?: number };
+export type ImportProgress = {
+  phase?: string;
+  done?: number;
+  total?: number;
+  pendingGeocode?: number;
+  /** Inicio del análisis (ISO), para detectar análisis interrumpidos sin worker. */
+  startedAt?: string;
+};
 
 /** Importaciones en dos fases (§5.6 / §8.5). */
 export const imports = pgTable(

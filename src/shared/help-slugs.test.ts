@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { helpRegistry, listHelpPages, prevNext } from '../../content/help/registry';
+import { helpRegistry, listHelpPages, prevNext, stagingOnlySlugs } from '../../content/help/registry';
 import { helpSections, helpSlugs, isHelpSlug } from './help-slugs';
 
 const contentDir = path.resolve(__dirname, '../../content/help');
@@ -83,7 +83,8 @@ describe('manual de uso (§10.7)', () => {
 
   it('listHelpPages ordena por sección y luego por orden; prevNext recorre esa lista', () => {
     const pages = listHelpPages();
-    expect(pages).toHaveLength(helpSlugs.length);
+    // Modo `full` (tests): las páginas exclusivas del ambiente de pruebas no van en el índice.
+    expect(pages).toHaveLength(helpSlugs.length - stagingOnlySlugs.length);
     expect(pages[0]?.slug).toBe('primeros-pasos');
     expect(pages.at(-1)?.slug).toBe('administracion/padron-de-roles');
 

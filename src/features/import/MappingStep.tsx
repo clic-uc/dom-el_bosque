@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { HelpLink } from '@/features/help/HelpLink';
 import { errorMessage } from '@/lib/api';
+import { capabilities } from '@/shared/capabilities';
 import type { AnalyzeImportInput } from '@/shared/schemas/imports';
 import type { ImportSource } from '@/shared/types';
 import { useAnalyzeImport } from './hooks';
@@ -291,8 +292,9 @@ export function MappingStep({ source, initial, onBack, onAnalyzing }: Props) {
                   <HelpLink slug="importacion/georreferenciacion" />
                 </span>
                 <span className="text-sm text-muted-foreground">
-                  Para las filas sin coordenadas ni rol ubicado, se busca la dirección en el padrón y luego en
-                  OpenStreetMap.
+                  {capabilities.externalGeocode
+                    ? 'Para las filas sin coordenadas ni rol ubicado, se busca la dirección en el padrón y luego en OpenStreetMap.'
+                    : 'Para las filas sin coordenadas ni rol ubicado, se busca la dirección en el padrón. En este ambiente de pruebas no se busca en OpenStreetMap.'}
                 </span>
               </Label>
             </div>

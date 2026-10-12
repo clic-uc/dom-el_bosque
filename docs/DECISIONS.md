@@ -144,3 +144,25 @@ Registro de toda desviación o precisión respecto de `PROMPT.md`. Formato: fech
 **2026-10-05 — Limpieza de knip.** Se eliminaron 10 componentes shadcn sin uso (y `cmdk`, `date-fns`, `react-day-picker`). Los contratos compartidos (`src/shared/**`, servicios, `http.ts`, `lib/*`) se declaran como *entries* de knip: sus exports son API interna pública aunque hoy no todos tengan consumidor; `ignoreExportsUsedInFile` evita falsos positivos.
 
 **2026-10-05 — `errors.ts` sin dependencia de Next.** `toApiError` (usa `NextResponse`) se movió a `http.ts`; `errors.ts` queda puro para que los bundles del worker y de los scripts CLI no requieran `next/server` (la imagen standalone no lo expone a `scripts/*.js`). Los handlers de importación se importan de forma estática en `jobs/handlers.ts`: el `import()` dinámico con `catch` ocultaba el fallo.
+
+## Staging (Vercel + Neon)
+
+Implementa `docs/STAGING.md`; la parte operativa está en `docs/DEPLOY.md` §7. Producción (`full`) no cambia de comportamiento.
+
+**2026-10-12 — Modo de despliegue con capacidades centralizadas.** `NEXT_PUBLIC_DEPLOY_MODE` (`full` | `staging`, por defecto `full`; cualquier otro valor es `full`) se fija en el build. `src/shared/capabilities.ts` es la única fuente de topes, banderas y textos; los servicios aplican la regla y la interfaz la refleja. Los tests de staging fijan la variable con `vi.hoisted` antes de importar.
+
+**2026-10-12 — Capacidad no disponible → `ConflictError` (409)** con mensaje que dice qué hacer (adjuntos: usar un enlace; padrón: `roles:import`). La guardia del padrón vive en la ruta y no en el servicio porque el CLI usa el mismo servicio y es justamente la alternativa. No existe interfaz web de carga del padrón, así que no hubo nada que deshabilitar en Administración.
+
+**2026-10-12 — En staging se mantiene la búsqueda de direcciones en el padrón; solo se apaga OpenStreetMap.** STAGING.md §4.2 pedía forzar `geocode: false`, pero eso también apaga la búsqueda local en el padrón, contra la tabla de §3 ("solo padrón"). Se anula `needsExternalGeocode` (las filas no ubicadas quedan `location_missing` en vez de `location_pending`) y `runAnalyze` no encola `import.geocode-external`. Por lo mismo la casilla "Buscar ubicación por dirección" no se oculta: su texto explica que solo se busca en el padrón.
+
+**2026-10-12 — Tope de filas antes de guardar.** `uploadImport` lee la planilla desde el buffer (`parseImportBuffer`) antes de escribirla en storage: una planilla ilegible o con demasiadas filas no deja nada guardado (también en `full`, donde antes se escribía y luego se borraba). El tope también se revisa al cambiar de hoja y al analizar.
+
+**2026-10-12 — Archivos en `file_blobs` (`bytea`, migración 0003).** Segundo backend de `storage` con la misma interfaz, elegido por `capabilities.fileStorage`; el de disco se exporta como `diskStorage`. La tabla se crea también en producción y queda vacía.
+
+**2026-10-12 — Tareas sin worker en `src/server/jobs/inline.ts`.** En staging `enqueue()` no toca pg-boss: agenda `runAnalyze`/`runCommit` con `after()`. `next/server` y los handlers se importan de forma dinámica (evita el ciclo con `import/analyze`/`import/commit` y que el worker dependa de Next). Va en un módulo aparte de `boss.ts` porque los tests existentes simulan `jobs/boss` completo. La limpieza de borradores vencidos se agenda con `after()` en cada subida. Rutas de analizar y confirmar con `maxDuration = 300`.
+
+**2026-10-12 — Análisis interrumpido.** `startAnalyze` guarda `progress.startedAt` (`withProgress` lo conserva). Con tareas en la petición, un ANALYZING con más de 360 s (300 s de `maxDuration` + margen) es `stalled` en `GET /api/imports/:id`: la revisión ofrece "Volver a analizar" (mismas opciones guardadas) o "Descartar", y `startAnalyze` lo acepta. Se calcula en el servidor para no depender del reloj del navegador. No cubre COMMITTING: la confirmación escribe en lotes de 500 con una transacción por lote, así que un corte a mitad dejaría escrituras parciales; con 1.000 filas tarda menos de un segundo.
+
+**2026-10-12 — Aviso de staging sin romper vistas de pantalla completa.** El shell autenticado publica el alto del aviso en `--app-banner-h`; las utilidades `h-app` / `min-h-app` (`globals.css`) descuentan ese alto y equivalen a `100dvh` en producción. La página del manual `ambiente-de-pruebas` solo aparece en el índice en staging (en producción sigue accesible por URL).
+
+**2026-10-12 — Conexiones en staging.** Pool de la app con `max: 2` (cada instancia serverless abre el suyo contra el pooler de Neon). Los scripts usan `DATABASE_URL_DIRECT` si existe (`scripts/_env.ts`): migraciones y DDL no pasan por PgBouncer en modo transacción. `.gitignore` ahora versiona `.env.*.example` (`.env.production.example` estaba ignorado por error) y se agrega `.env.staging.example`.

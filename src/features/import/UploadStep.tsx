@@ -11,10 +11,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { HelpLink } from '@/features/help/HelpLink';
 import { errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { capabilities, DEFAULT_IMPORT_MAX_MB } from '@/shared/capabilities';
 import type { ImportSource } from '@/shared/types';
 import { usePatchSource, useUploadImport } from './hooks';
 
-const MAX_MB = 10;
+const MAX_MB = capabilities.importMaxMb ?? DEFAULT_IMPORT_MAX_MB;
 const ACCEPT = '.csv,.xlsx';
 
 const delimiterOptions = [
@@ -77,8 +78,15 @@ export function UploadStep({ layerId, source, onSource, onNext }: Props) {
         <div>
           <h3 className="text-lg font-semibold">Elige el archivo con los registros</h3>
           <p className="text-base text-muted-foreground">
-            Se aceptan planillas Excel (.xlsx) o CSV de hasta {MAX_MB} MB, con una fila de encabezados.
+            Se aceptan planillas Excel (.xlsx) o CSV de hasta {MAX_MB} MB
+            {capabilities.importMaxRows
+              ? ` y ${capabilities.importMaxRows.toLocaleString('es-CL')} filas`
+              : ''}
+            , con una fila de encabezados.
           </p>
+          {capabilities.notices.importLimits ? (
+            <p className="mt-1 text-sm text-amber-900">{capabilities.notices.importLimits}</p>
+          ) : null}
         </div>
         <HelpLink slug="importacion/preparar-archivo" label="Cómo preparar el archivo" withText />
       </div>

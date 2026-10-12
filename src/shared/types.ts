@@ -248,5 +248,7 @@ export type ImportStatusFull = ImportStatusDto & {
   headers: string[];
   /** Duplicados ya resueltos, por resolución (para el resumen "Se crearán X, se actualizarán Y…"). */
   resolutions: { skip: number; update: number; create: number };
+  /** El análisis se cortó a mitad (solo sin worker): se puede volver a analizar o descartar. */
+  stalled?: boolean;
   source?: ImportSource;
 };

@@ -17,6 +17,7 @@ import type { ImportRowPatch, ImportRowStatus } from '@/shared/schemas/imports';
 import type { ImportStatusFull } from '@/shared/types';
 import {
   REVIEW_PAGE_SIZE,
+  useAnalyzeImport,
   useBulkRows,
   useCommitImport,
   useDiscardImport,
@@ -98,6 +99,7 @@ export function ReviewStep({ status, onDiscarded }: Props) {
   const patchRemovals = usePatchRemovals(importId);
   const commit = useCommitImport(importId);
   const discard = useDiscardImport(importId);
+  const reanalyze = useAnalyzeImport(importId);
 
   const onPatch = (rowNumber: number, patch: ImportRowPatch) =>
     patchRow.mutateAsync({ rowNumber, patch }).catch((err) => {
@@ -115,6 +117,75 @@ export function ReviewStep({ status, onDiscarded }: Props) {
     setTab(t as Tab);
     setPage(1);
     setCode('all');
+  }
+
+  const discardDialog = (
+    <ConfirmDialog
+      open={discardOpen}
+      onOpenChange={setDiscardOpen}
+      title="¿Descartar esta importación?"
+      description="Se borrará el borrador y el archivo subido. No se modifica ningún registro de la capa."
+      confirmLabel="Descartar"
+      destructive
+      pending={discard.isPending}
+      onConfirm={() =>
+        discard.mutate(undefined, {
+          onSuccess: onDiscarded,
+          onError: (err) => toast.error(errorMessage(err)),
+        })
+      }
+    />
+  );
+
+  // Sin worker (ambiente de pruebas) el análisis corre dentro de una petición con tiempo límite: si se cortó,
+  // se ofrece repetirlo con las mismas columnas y opciones, o descartarlo.
+  if (status.stalled) {
+    const retry = () =>
+      reanalyze.mutate(
+        {
+          columnMapping: status.columnMapping,
+          rowFrom: status.rowFrom,
+          rowTo: status.rowTo,
+          duplicateStrategy: status.duplicateStrategy,
+          keepExistingOnEmpty: status.keepExistingOnEmpty,
+          geocode: status.geocode,
+          fullReplace: status.fullReplace,
+        },
+        {
+          onSuccess: () => toast.success('Se volvió a iniciar el análisis.'),
+          onError: (err) => toast.error(errorMessage(err)),
+        },
+      );
+    return (
+      <div className="flex h-full flex-col">
+        <ErrorState
+          title="El análisis se interrumpió"
+          message="El análisis del archivo se detuvo antes de terminar y no va a continuar solo. Vuelve a analizarlo con las mismas columnas o descarta la importación para empezar de nuevo."
+        />
+        <div className="mt-auto flex flex-wrap justify-end gap-2 border-t pt-4">
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="h-11 text-base"
+            onClick={() => setDiscardOpen(true)}
+          >
+            Descartar
+          </Button>
+          <Button
+            type="button"
+            size="lg"
+            className="h-11 text-base"
+            disabled={reanalyze.isPending}
+            onClick={retry}
+          >
+            {reanalyze.isPending ? <Loader2 className="animate-spin" aria-hidden /> : null}
+            Volver a analizar
+          </Button>
+        </div>
+        {discardDialog}
+      </div>
+    );
   }
 
   if (busy || status.status === 'UPLOADED') {
@@ -155,21 +226,7 @@ export function ReviewStep({ status, onDiscarded }: Props) {
             Descartar
           </Button>
         </div>
-        <ConfirmDialog
-          open={discardOpen}
-          onOpenChange={setDiscardOpen}
-          title="¿Descartar esta importación?"
-          description="Se borrará el borrador y el archivo subido. No se modifica ningún registro de la capa."
-          confirmLabel="Descartar"
-          destructive
-          pending={discard.isPending}
-          onConfirm={() =>
-            discard.mutate(undefined, {
-              onSuccess: onDiscarded,
-              onError: (err) => toast.error(errorMessage(err)),
-            })
-          }
-        />
+        {discardDialog}
       </div>
     );
   }

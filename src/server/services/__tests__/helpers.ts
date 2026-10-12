@@ -38,6 +38,7 @@ const TABLES = [
   'imports',
   'import_rows',
   'import_removals',
+  'file_blobs',
 ] as const;
 
 export async function truncateAll(): Promise<void> {

@@ -7,14 +7,16 @@ import { IMPORT_DRAFT_TTL_DAYS } from '@/shared/constants';
 import { ROLE_HEADER_ALIASES } from '@/shared/role-id';
 import type { ImportSourcePatch } from '@/shared/schemas/imports';
 import { MAPPING_TARGETS } from '@/shared/schemas/imports';
+import { capabilities } from '@/shared/capabilities';
 import { normalizeText, toFieldKey } from '@/shared/text';
 import type { ImportSource } from '@/shared/types';
 import type { Actor } from '../auth/session';
 import { ConflictError, ValidationError } from '../errors';
 import { requireLayer, type LayerRow } from '../services/_shared';
+import { cleanupWithoutWorker } from '../jobs/inline';
 import { storage } from '../storage';
 import { assertOwnImport, requireImport } from './service';
-import { importFileKey, readImportTable, type ImportRow } from './source';
+import { importFileKey, parseImportBuffer, readImportTable, type ImportRow } from './source';
 import type { ParsedTable } from './table';
 
 export type UploadFile = { name: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> };
@@ -110,9 +112,25 @@ function fileTypeOf(name: string): 'csv' | 'xlsx' {
   throw new ValidationError('Solo se aceptan archivos .csv o .xlsx (Excel).');
 }
 
+/** Tope de MB efectivo: el del despliegue (staging) o el configurado en el servidor. */
+function importMaxMb(): number {
+  return capabilities.importMaxMb ?? env.MAX_IMPORT_FILE_MB;
+}
+
+/** Staging: rechaza planillas con más filas que el máximo del ambiente (se aplica al subir y al cambiar de hoja). */
+export function assertImportRowLimit(totalRows: number): void {
+  const max = capabilities.importMaxRows;
+  if (max === null || totalRows <= max) return;
+  throw new ValidationError(
+    `La planilla tiene ${totalRows.toLocaleString('es-CL')} filas con datos y en este ambiente de pruebas se aceptan hasta ${max.toLocaleString('es-CL')}. Divide la planilla en partes más pequeñas e impórtalas una por una.`,
+    { totalRows, maxRows: max },
+  );
+}
+
 /**
- * Subir (§8.5): valida tipo y tamaño, guarda el archivo en storage, crea la importación en UPLOADED
- * (vence a los 7 días) y devuelve la vista previa con el mapeo sugerido.
+ * Subir (§8.5): valida tipo, tamaño y filas, guarda el archivo en storage, crea la importación en UPLOADED
+ * (vence a los 7 días) y devuelve la vista previa con el mapeo sugerido. El archivo se lee antes de guardarlo:
+ * uno ilegible o demasiado grande no deja nada en storage.
  */
 export async function uploadImport(
   db: DbOrTx,
@@ -122,28 +140,28 @@ export async function uploadImport(
 ): Promise<ImportSource> {
   const layer = await requireLayer(db, layerId);
   const fileType = fileTypeOf(file.name);
-  const maxBytes = env.MAX_IMPORT_FILE_MB * 1024 * 1024;
+  const maxMb = importMaxMb();
   if (file.size <= 0) throw new ValidationError('El archivo está vacío.');
-  if (file.size > maxBytes) {
+  if (file.size > maxMb * 1024 * 1024) {
     throw new ValidationError(
-      `El archivo pesa más de ${env.MAX_IMPORT_FILE_MB} MB. Divide la planilla en partes más pequeñas.`,
+      `El archivo pesa más de ${maxMb} MB. Divide la planilla en partes más pequeñas.`,
     );
   }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const table = await parseImportBuffer(
+    buffer,
+    { fileType, sheetName: null, headerRow: 1, delimiter: null },
+    { headerRow: null },
+  );
+  assertImportRowLimit(table.totalRows);
+
+  // Sin worker no corre la limpieza diaria de borradores vencidos: se aprovecha cada subida.
+  await cleanupWithoutWorker();
 
   const id = randomUUID();
   const fileKey = importFileKey(id);
-  await storage.put(fileKey, Buffer.from(await file.arrayBuffer()));
-
-  let table: ParsedTable & { headerRow: number };
-  try {
-    table = await readImportTable(
-      { fileKey, fileType, sheetName: null, headerRow: 1, delimiter: null },
-      { headerRow: null },
-    );
-  } catch (err) {
-    await storage.delete(fileKey);
-    throw err;
-  }
+  await storage.put(fileKey, buffer);
 
   const expiresAt = new Date(Date.now() + IMPORT_DRAFT_TTL_DAYS * 86_400_000);
   const [row] = await db
@@ -192,6 +210,7 @@ export async function patchImportSource(
     headerRow,
     delimiter: patch.delimiter ?? imp.delimiter,
   });
+  assertImportRowLimit(table.totalRows);
 
   const [row] = await db
     .update(imports)

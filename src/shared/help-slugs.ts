@@ -1,6 +1,7 @@
 /** Lista tipada de páginas del manual (§10.7). `HelpLink` solo acepta estos slugs; un test verifica que cada uno tenga su MDX. */
 export const helpSlugs = [
   'primeros-pasos',
+  'ambiente-de-pruebas',
   'mapa/navegacion',
   'mapa/busqueda',
   'mapa/ficha-del-rol',

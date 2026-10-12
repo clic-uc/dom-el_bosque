@@ -2,6 +2,7 @@ import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { DbOrTx } from '@/db/client';
 import { attachments, importRemovals, importRows, imports, records } from '@/db/schema';
 import type { ImportProgress } from '@/db/schema/imports';
+import { capabilities, isAnalysisStalled } from '@/shared/capabilities';
 import type { AnalyzeImportData } from '@/shared/schemas/imports';
 import type { Actor } from '../auth/session';
 import { ConflictError, ValidationError, isAppError } from '../errors';
@@ -19,6 +20,7 @@ import {
 } from './analysis';
 import { assertOwnImport, requireImport } from './service';
 import { readImportTable, type ImportRow } from './source';
+import { assertImportRowLimit } from './upload';
 
 type NewImportRow = typeof importRows.$inferInsert;
 
@@ -33,10 +35,13 @@ export function headersOf(imp: Pick<ImportRow, 'progress' | 'columnMapping'>): s
   return fromProgress?.length ? fromProgress : Object.keys(imp.columnMapping);
 }
 
-/** Nuevo `progress` conservando `headers`. */
+/** Nuevo `progress` conservando `headers` y `startedAt`. */
 export function withProgress(imp: Pick<ImportRow, 'progress'>, next: ImportProgress): ImportProgress {
-  const headers = (imp.progress as ImportProgressExt | null)?.headers;
-  return (headers ? { ...next, headers } : next) as ImportProgress;
+  const prev = imp.progress as ImportProgressExt | null;
+  const out: ImportProgressExt = { ...next };
+  if (prev?.headers) out.headers = prev.headers;
+  if (prev?.startedAt && !next.startedAt) out.startedAt = prev.startedAt;
+  return out;
 }
 
 /** Inserción en lote con un solo parámetro JSON (mucho más rápido que un INSERT multi-fila de 1000 × 11 parámetros). */
@@ -69,6 +74,7 @@ const ANALYZABLE_STATUSES = new Set<ImportRow['status']>(['UPLOADED', 'REVIEW', 
 
 /**
  * `POST /api/imports/:id/analyze` (§8.5): valida el mapeo, guarda las opciones y encola `import.analyze`.
+ * Sin worker, un análisis interrumpido (la función se cortó a mitad) se puede volver a lanzar.
  */
 export async function startAnalyze(
   db: DbOrTx,
@@ -78,7 +84,7 @@ export async function startAnalyze(
 ): Promise<void> {
   const imp = await requireImport(db, id);
   assertOwnImport(actor, imp);
-  if (!ANALYZABLE_STATUSES.has(imp.status)) {
+  if (!ANALYZABLE_STATUSES.has(imp.status) && !isAnalysisStalled(imp)) {
     throw new ConflictError(
       imp.status === 'ANALYZING'
         ? 'La importación ya se está analizando. Espera a que termine.'
@@ -88,6 +94,7 @@ export async function startAnalyze(
   const layer = await requireLayer(db, imp.layerId);
   const table = await readImportTable(imp);
   validateMapping(layer, input, table.headers);
+  assertImportRowLimit(table.totalRows);
 
   const lastRow = table.rows[table.rows.length - 1]?.rowNumber ?? 0;
   if (lastRow === 0)
@@ -119,6 +126,7 @@ export async function startAnalyze(
           total: 0,
           pendingGeocode: 0,
           headers: table.headers,
+          startedAt: new Date().toISOString(),
         } as ImportProgress,
         errorMessage: null,
         analyzedAt: null,
@@ -217,12 +225,15 @@ export async function runAnalyze(db: DbOrTx, importId: string, deps: AnalyzeDeps
       .where(eq(imports.id, importId));
 
     // Las direcciones que el padrón no ubicó siguen en segundo plano (§8.7), una tarea por fila.
-    for (let i = 0; i < pendingGeocode.length; i += 100) {
-      await Promise.all(
-        pendingGeocode
-          .slice(i, i + 100)
-          .map((rowNumber) => enqueue('import.geocode-external', { importId, rowNumber })),
-      );
+    // Sin geocodificación externa (staging) `pendingGeocode` siempre queda vacío; la guarda lo deja explícito.
+    if (capabilities.externalGeocode) {
+      for (let i = 0; i < pendingGeocode.length; i += 100) {
+        await Promise.all(
+          pendingGeocode
+            .slice(i, i + 100)
+            .map((rowNumber) => enqueue('import.geocode-external', { importId, rowNumber })),
+        );
+      }
     }
   } catch (err) {
     logger.error({ err, importId }, 'import.analyze falló');

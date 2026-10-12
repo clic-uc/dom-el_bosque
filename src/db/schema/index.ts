@@ -9,3 +9,4 @@ export * from './polygons';
 export * from './attachments';
 export * from './imports';
 export * from './audit';
+export * from './file-blobs';

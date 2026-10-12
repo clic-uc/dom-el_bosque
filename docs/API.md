@@ -34,6 +34,8 @@ Contratos de los Route Handlers de `app/api/**` (PROMPT.md §9). La API es _same
 
 Los `message` están en español y pensados para mostrarse al usuario.
 
+**Ambiente de pruebas** (`NEXT_PUBLIC_DEPLOY_MODE=staging`, `docs/DEPLOY.md` §7): `POST /api/attachments` con archivo, `GET /api/attachments/:id/download` y `POST /api/roles/import` responden `409 CONFLICT` con un mensaje que indica la alternativa; `POST /api/imports` rechaza (`400 VALIDATION`) planillas de más de 4 MB o 1.000 filas; analizar y confirmar corren en la misma invocación (sin worker); `GET /api/imports/:id` incluye `stalled: true` si un análisis quedó cortado, y en ese caso `POST /api/imports/:id/analyze` lo vuelve a lanzar.
+
 ### Paginación
 
 Los listados paginados aceptan `page` (desde 1, por defecto 1) y `pageSize` (1–200, por defecto 50; `paginationSchema`) y responden `Paginated<T>`:

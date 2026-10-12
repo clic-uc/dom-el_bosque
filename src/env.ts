@@ -30,6 +30,8 @@ export const env = createEnv({
   client: {
     NEXT_PUBLIC_APP_URL: z.string().url(),
     NEXT_PUBLIC_MAP_STYLE_URL: z.string().url(),
+    // `staging` = Vercel + Neon con alcance reducido (src/shared/capabilities.ts). Se fija en el build.
+    NEXT_PUBLIC_DEPLOY_MODE: z.enum(['full', 'staging']).default('full'),
   },
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
@@ -46,6 +48,7 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_MAP_STYLE_URL: process.env.NEXT_PUBLIC_MAP_STYLE_URL,
+    NEXT_PUBLIC_DEPLOY_MODE: process.env.NEXT_PUBLIC_DEPLOY_MODE,
   },
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   emptyStringAsUndefined: false,

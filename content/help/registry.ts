@@ -1,4 +1,5 @@
 import type { MDXContent } from 'mdx/types';
+import { capabilities } from '@/shared/capabilities';
 import { helpSections, type HelpSectionId, type HelpSlug } from '@/shared/help-slugs';
 
 /** Metadatos de una página del manual. Cada MDX exporta el mismo objeto como `meta` (§10.7). */
@@ -25,6 +26,10 @@ export const helpRegistry: Record<HelpSlug, HelpPageEntry> = {
   'primeros-pasos': {
     meta: { title: 'Primeros pasos', section: 'inicio', order: 1, draft: false },
     load: () => import('./primeros-pasos.mdx'),
+  },
+  'ambiente-de-pruebas': {
+    meta: { title: 'Ambiente de pruebas', section: 'inicio', order: 2, draft: false },
+    load: () => import('./ambiente-de-pruebas.mdx'),
   },
   'mapa/navegacion': {
     meta: { title: 'Navegar el mapa', section: 'mapa', order: 1, draft: true },
@@ -126,9 +131,13 @@ export function getHelpPage(slug: HelpSlug): HelpPage {
   return { slug, ...helpRegistry[slug] };
 }
 
-/** Todas las páginas, ordenadas por sección (orden de `helpSections`) y luego por `order`. */
+/** Páginas que solo aparecen en el índice del ambiente de pruebas (en producción siguen accesibles por URL). */
+export const stagingOnlySlugs: readonly HelpSlug[] = ['ambiente-de-pruebas'];
+
+/** Todas las páginas visibles, ordenadas por sección (orden de `helpSections`) y luego por `order`. */
 export function listHelpPages(): HelpPage[] {
   return (Object.keys(helpRegistry) as HelpSlug[])
+    .filter((slug) => capabilities.mode === 'staging' || !stagingOnlySlugs.includes(slug))
     .map((slug) => getHelpPage(slug))
     .sort((a, b) => {
       const bySection = (sectionIndex.get(a.meta.section) ?? 0) - (sectionIndex.get(b.meta.section) ?? 0);

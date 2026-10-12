@@ -8,7 +8,7 @@ import { attachments, auditLogs, layers, records } from '@/db/schema';
 import { createLinkAttachmentSchema } from '@/shared/schemas/attachments';
 import type { Actor } from '../auth/session';
 import { NotFoundError, ValidationError } from '../errors';
-import { storage } from '../storage';
+import { diskStorage as storage } from '../storage';
 import * as attachmentsService from './attachments';
 
 // Límite pequeño para probar el tamaño sin crear archivos de 20 MB. Debe fijarse antes de que `@/env` se evalúe.

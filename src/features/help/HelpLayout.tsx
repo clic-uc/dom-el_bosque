@@ -18,7 +18,7 @@ export function HelpLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-dvh bg-slate-50">
+    <div className="min-h-app bg-slate-50">
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">

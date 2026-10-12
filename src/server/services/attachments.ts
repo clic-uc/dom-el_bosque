@@ -2,10 +2,11 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { DbOrTx } from '@/db/client';
 import { attachments, polygons, records } from '@/db/schema';
 import { env } from '@/env';
+import { capabilities } from '@/shared/capabilities';
 import { attachmentAllowedExtensions, attachmentAllowedMimeTypes } from '@/shared/constants';
 import type { AttachmentEntityType, CreateLinkAttachmentInput } from '@/shared/schemas/attachments';
 import type { Actor } from '../auth/session';
-import { NotFoundError, ValidationError } from '../errors';
+import { ConflictError, NotFoundError, ValidationError } from '../errors';
 import { storage } from '../storage';
 import * as audit from './audit';
 
@@ -72,12 +73,18 @@ export function validateAttachmentFile(file: FileInput): void {
   }
 }
 
+/** Staging: sin disco persistente no se aceptan archivos (los enlaces sí). */
+function assertFileAttachmentsEnabled(): void {
+  if (!capabilities.fileAttachments) throw new ConflictError(capabilities.notices.attachments ?? 'No se pueden subir archivos.');
+}
+
 export async function addFile(
   db: DbOrTx,
   actor: Actor,
   input: { entityType: AttachmentEntityType; entityId: string; title: string },
   file: FileInput,
 ): Promise<AttachmentRow> {
+  assertFileAttachmentsEnabled();
   validateAttachmentFile(file);
   const layerId = await assertEntityExists(db, input.entityType, input.entityId);
   const id = crypto.randomUUID();
@@ -135,6 +142,7 @@ export async function deleteAttachment(db: DbOrTx, actor: Actor, id: string): Pr
 }
 
 export async function getDownload(db: DbOrTx, id: string): Promise<{ row: AttachmentRow; stream: ReadableStream<Uint8Array> }> {
+  assertFileAttachmentsEnabled();
   const [row] = await db.select().from(attachments).where(eq(attachments.id, id)).limit(1);
   if (!row || row.kind !== 'file' || !row.storageKey) throw new NotFoundError('El archivo no existe');
   if (!(await storage.exists(row.storageKey))) throw new NotFoundError('El archivo ya no está disponible');

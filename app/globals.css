@@ -107,3 +107,12 @@
   width: 100%;
   height: 100%;
 }
+
+/* Alto disponible bajo el aviso de ambiente de pruebas (`--app-banner-h`; sin aviso vale 0 y equivale a 100dvh). */
+@utility h-app {
+  height: calc(100dvh - var(--app-banner-h, 0px));
+}
+
+@utility min-h-app {
+  min-height: calc(100dvh - var(--app-banner-h, 0px));
+}

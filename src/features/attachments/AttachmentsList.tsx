@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, File, FileText, Image as ImageIcon, Link as LinkIcon, Paperclip, Plus, Ruler, Trash2, Upload, type LucideIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { EmptyState, ErrorState, LoadingState } from '@/components/shared/states';
@@ -12,6 +12,7 @@ import { api, errorMessage } from '@/lib/api';
 import { formatBytes, formatDate } from '@/lib/format';
 import { queryKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
+import { capabilities } from '@/shared/capabilities';
 import type { AttachmentEntityType } from '@/shared/schemas/attachments';
 import type { AttachmentDto } from '@/shared/types';
 import { AddAttachmentDialog, type AddAttachmentMode } from './AddAttachmentDialog';
@@ -37,6 +38,8 @@ export function attachmentIcon(a: Pick<AttachmentDto, 'kind' | 'mimeType' | 'fil
 
 /** Lista de adjuntos de un registro o polígono (§10.6): enlaces abren en pestaña nueva; archivos se descargan. */
 export function AttachmentsList({ entityType, entityId, canEdit, className }: AttachmentsListProps) {
+  const filesEnabled = capabilities.fileAttachments;
+  const filesOffId = useId();
   const queryClient = useQueryClient();
   const [addMode, setAddMode] = useState<AddAttachmentMode | null>(null);
   const [toDelete, setToDelete] = useState<AttachmentDto | null>(null);
@@ -69,12 +72,24 @@ export function AttachmentsList({ entityType, entityId, canEdit, className }: At
             <Button type="button" variant="outline" className="h-11 text-sm" onClick={() => setAddMode('link')}>
               <Plus aria-hidden /> Agregar enlace
             </Button>
-            <Button type="button" variant="outline" className="h-11 text-sm" onClick={() => setAddMode('file')}>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 text-sm"
+              disabled={!filesEnabled}
+              aria-describedby={filesEnabled ? undefined : filesOffId}
+              onClick={() => setAddMode('file')}
+            >
               <Upload aria-hidden /> Subir archivo
             </Button>
           </div>
         ) : null}
       </div>
+      {canEdit && !filesEnabled ? (
+        <p id={filesOffId} className="text-sm text-muted-foreground">
+          {capabilities.notices.attachments}
+        </p>
+      ) : null}
 
       {list.isPending ? (
         <LoadingState rows={2} label="Cargando adjuntos…" className="p-0" />
@@ -84,7 +99,13 @@ export function AttachmentsList({ entityType, entityId, canEdit, className }: At
         <EmptyState
           icon={Paperclip}
           title="Sin documentos adjuntos"
-          description={canEdit ? 'Agrega un enlace (por ejemplo, a Drive) o sube un archivo: planos, reglamentos, certificados, fotos.' : undefined}
+          description={
+            canEdit
+              ? filesEnabled
+                ? 'Agrega un enlace (por ejemplo, a Drive) o sube un archivo: planos, reglamentos, certificados, fotos.'
+                : 'Agrega un enlace al documento (por ejemplo, a Drive): planos, reglamentos, certificados, fotos.'
+              : undefined
+          }
           className="rounded-md border border-dashed py-8"
         />
       ) : (

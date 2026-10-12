@@ -1,5 +1,6 @@
 import { PgBoss } from 'pg-boss';
 import { env } from '@/env';
+import { capabilities } from '@/shared/capabilities';
 import { logger } from '../logger';
 
 /** Colas de pg-boss (§2, §8.5, §8.7). */
@@ -60,6 +61,12 @@ export async function enqueue<Q extends QueueName>(
   data: JobPayloads[Q],
   options?: Parameters<PgBoss['send']>[2],
 ): Promise<string | null> {
+  // Staging (Vercel): sin worker ni pg-boss; la tarea corre en esta misma invocación (ver ./inline).
+  if (capabilities.inlineJobs) {
+    const { runInline } = await import('./inline');
+    await runInline(queue, data);
+    return null;
+  }
   const boss = await getBoss();
   return boss.send(queue, data, options ?? {});
 }

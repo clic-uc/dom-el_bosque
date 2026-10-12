@@ -1,13 +1,16 @@
 import { db } from '@/db/client';
-import { ValidationError } from '@/server/errors';
+import { ConflictError, ValidationError } from '@/server/errors';
 import { json, withActor } from '@/server/http';
 import * as rolesService from '@/server/services/roles';
+import { capabilities } from '@/shared/capabilities';
 
 const MAX_PADRON_BYTES = 20 * 1024 * 1024;
 
-/** POST /api/roles/import (admin): multipart con campo `file` (CSV del padrón) → BulkImportSummary (§7.4). */
+/** POST /api/roles/import (admin): multipart con campo `file` (CSV del padrón) → BulkImportSummary (§7.4). No en staging. */
 export const POST = withActor(
   async ({ req, actor }) => {
+    // El CLI `roles:import` usa el mismo servicio: la restricción de staging vive solo en la ruta web.
+    if (!capabilities.padronUpload) throw new ConflictError(capabilities.notices.padron ?? 'No disponible en este ambiente.');
     let form: FormData;
     try {
       form = await req.formData();

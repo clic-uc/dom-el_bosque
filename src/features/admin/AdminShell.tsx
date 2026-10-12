@@ -15,7 +15,7 @@ const tabs = [
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   return (
-    <div className="min-h-dvh bg-slate-50">
+    <div className="min-h-app bg-slate-50">
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
           <div>

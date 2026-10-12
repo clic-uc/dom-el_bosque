@@ -1,6 +1,6 @@
 # Handoff — estado de la reconstrucción de SIGDOM El Bosque
 
-Última actualización: 2026-10-05.
+Última actualización: 2026-10-12.
 
 ## Cómo retomar
 
@@ -23,8 +23,9 @@
 | 8–9 Administración, auditoría, polígonos, adjuntos, mapas de calor | ✅ (16 tests de servicio + 7 UI) |
 | 10 Manual | ✅ (24 páginas MDX; 3 redactadas completas, 21 en borrador con esquema) |
 | 11 Producción | ✅ Dockerfile, compose prod + Caddy, CI, backups, DEPLOY/API.md, e2e (17 pasan, 1 fixme); pila completa verificada en local con smoke e importación. |
+| Staging (Vercel + Neon) | ✅ código y docs (`docs/DEPLOY.md` §7, `NEXT_PUBLIC_DEPLOY_MODE=staging`, 4 migraciones); falta el primer despliegue real. |
 
-Totales: 250 tests de Vitest en verde (31 archivos), 17 e2e, typecheck/lint/knip limpios, `pnpm build` OK.
+Totales: 264 tests de Vitest en verde (33 archivos), 17 e2e, typecheck/lint/knip limpios, `pnpm build` OK.
 
 ## Pendientes conocidos
 
@@ -34,6 +35,8 @@ Totales: 250 tests de Vitest en verde (31 archivos), 17 e2e, typecheck/lint/knip
 - [ ] Redacción final de las 21 páginas del manual en borrador (requiere validar ejemplos con la DOM).
 - [ ] `uniqueKeys` de las capas: el seed las deja vacías a propósito (§11); la DOM las configura desde la UI guiada por `capas/campos-unicos`.
 - [ ] Lighthouse accesibilidad ≥ 90 en `/map` (no medido).
+
+- [ ] Staging: primer despliegue en Vercel + Neon (`docs/DEPLOY.md` §7), medir una importación de 1.000 filas con Neon en frío y ajustar los topes de `src/shared/capabilities.ts`; confirmar el tope real de cuerpo de petición de Vercel Hobby.
 
 ## Convenciones a mantener
 

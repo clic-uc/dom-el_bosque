@@ -1,6 +1,6 @@
 # Staging en Vercel + Neon (capa gratuita)
 
-> **Estado: propuesta, nada implementado.** Este documento recoge el análisis de compatibilidad, los límites conocidos y cómo orientar la implementación. Cuando se implemente, registrar la desviación en `docs/DECISIONS.md` y mover la parte operativa a `docs/DEPLOY.md`.
+> **Estado: implementado (2026-10-12).** Este documento queda como análisis de compatibilidad. Las decisiones y desviaciones están en `docs/DECISIONS.md` (sección "Staging") y la parte operativa en `docs/DEPLOY.md` §7. Pendiente: el primer despliegue real y medir tiempos en Neon (§7).
 
 Objetivo: tener un ambiente de pruebas accesible por internet, sin costo, para que la DOM pruebe mapa, registros y roles. Producción sigue siendo el despliegue con Docker descrito en `docs/DEPLOY.md`; este documento no lo modifica.
 

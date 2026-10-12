@@ -75,7 +75,7 @@ function HelpNavList({ pages, activeSlug, onNavigate }: Props & { onNavigate?: (
 /** Barra lateral fija (pantallas grandes). */
 export function HelpSidebar(props: Props) {
   return (
-    <aside className="sticky top-0 hidden h-dvh w-72 shrink-0 overflow-y-auto border-r bg-card px-3 py-6 lg:block">
+    <aside className="sticky top-0 hidden h-app w-72 shrink-0 overflow-y-auto border-r bg-card px-3 py-6 lg:block">
       <HelpNavList {...props} />
     </aside>
   );

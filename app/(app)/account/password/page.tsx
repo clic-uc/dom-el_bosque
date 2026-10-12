@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: 'Define tu contraseña' };
 export default async function PasswordPage() {
   const actor = await getActor({ allowPasswordChangeRequired: true });
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-slate-100 p-4">
+    <main className="flex min-h-app items-center justify-center bg-slate-100 p-4">
       <div className="w-full max-w-lg rounded-2xl border bg-white p-8 shadow-sm">
         <Brand className="justify-center" />
         <h1 className="mt-6 text-2xl font-semibold text-primary-dark">Define tu contraseña</h1>

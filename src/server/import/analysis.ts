@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import type { DbOrTx } from '@/db/client';
 import { importRows, records, roles } from '@/db/schema';
+import { capabilities } from '@/shared/capabilities';
 import { geocodeConfidenceLabels } from '@/shared/constants';
 import { tryNormalizeRoleId } from '@/shared/role-id';
 import type { GeocodeCandidate, GeocodeResult, RecordGeocodeInfo } from '@/shared/schemas/geocode';
@@ -718,7 +719,8 @@ export async function analyzeRow(
 
   let needsExternalGeocode = false;
   if (parsed.lat === null && !parsed.suggestedLocation) {
-    if (canGeocode && !own) {
+    // Sin geocodificación externa (staging) la fila queda sin ubicación en vez de "buscando".
+    if (canGeocode && !own && capabilities.externalGeocode) {
       needsExternalGeocode = true;
       messages.push(LOCATION_PENDING_MESSAGE);
     } else {

@@ -12,6 +12,8 @@ Internet ──443──▶ caddy ──▶ app:3000 (Next.js standalone)
 
 Archivos relevantes: `Dockerfile`, `entrypoint.sh`, `docker-compose.prod.yml`, `Caddyfile`, `.env.production.example`, `scripts/backup-db.sh`, `scripts/restore-db.sh`, `scripts/crontab.example`, `scripts/smoke.sh`.
 
+Para un ambiente de pruebas gratuito en Vercel + Neon, con alcance reducido, ver la [sección 7](#7-staging-en-vercel--neon). No reemplaza a este despliegue.
+
 ## 1. Requisitos del servidor
 
 - Linux de 64 bits (Ubuntu 22.04/24.04 LTS o Debian 12 recomendado), 2 vCPU, 4 GB de RAM, 40 GB de disco SSD. Los límites de recursos de compose suman 2,5 CPU y 2 GB para db + app + worker; con 2 vCPU funciona porque no coinciden en su máximo.
@@ -219,3 +221,82 @@ Caddy emite un certificado local autofirmado para `localhost` (el navegador avis
 | Detener todo          | `docker compose -f docker-compose.prod.yml down` (los datos quedan en los volúmenes)          |
 
 `…` abrevia `docker compose -f docker-compose.prod.yml`.
+
+## 7. Staging en Vercel + Neon
+
+Ambiente de pruebas accesible por internet y sin costo, para que la DOM pruebe mapa, registros, roles e importaciones pequeñas. **No es producción**: no tiene disco persistente ni proceso _worker_, así que funciona con alcance reducido. El análisis de compatibilidad está en `docs/STAGING.md` y las decisiones en `docs/DECISIONS.md` ("Staging").
+
+```
+Navegador ──▶ Vercel (Next.js, funciones serverless, NEXT_PUBLIC_DEPLOY_MODE=staging)
+                 │  importaciones: after() en la misma invocación (sin pg-boss)
+                 └──▶ Neon (PostgreSQL + PostGIS, conexión pooled)   archivos de importación en file_blobs
+Tu equipo ──────────▶ Neon (conexión direct): migraciones, seeds, polígonos, padrón, administrador
+```
+
+### 7.1 Qué cambia con `NEXT_PUBLIC_DEPLOY_MODE=staging`
+
+La única fuente de verdad es `src/shared/capabilities.ts`; los servicios aplican cada regla y la interfaz solo la refleja.
+
+| Capacidad                             | Producción (`full`) | Staging                                                     |
+| ------------------------------------- | ------------------- | ----------------------------------------------------------- |
+| Subir / descargar archivo adjunto     | Sí, 20 MB           | No (409 con mensaje). Los enlaces funcionan.                |
+| Importar planillas                    | Sí, 10 MB           | Sí, ≤ 4 MB y ≤ 1.000 filas (se rechaza al subir)            |
+| Buscar direcciones en OpenStreetMap   | Sí                  | No: solo el padrón                                          |
+| Cargar el padrón desde la web         | Sí (API)            | No (409); se carga por CLI                                  |
+| Procesar importaciones                | Worker pg-boss      | `after()` dentro de la petición, hasta 300 s                |
+| Archivos de importación               | Disco               | Tabla `file_blobs`                                          |
+| Limpieza de borradores vencidos       | Worker, 03:00       | Al subir cada importación nueva                             |
+| Análisis interrumpido                 | El worker reintenta | Tras 6 min la revisión ofrece "Volver a analizar" o "Descartar" |
+| Aviso en pantalla                     | —                   | Franja amarilla "Ambiente de pruebas" en todo el shell      |
+
+La variable se fija **en el build** (`NEXT_PUBLIC_*`): si se cambia en Vercel hay que volver a desplegar.
+
+### 7.2 Base de datos en Neon
+
+1. Crear un proyecto en Neon (región más cercana: São Paulo, `aws-sa-east-1`). PostGIS y `pg_trgm` vienen disponibles; `drizzle/0000_extensions.sql` los activa.
+2. En **Connection Details** copiar dos cadenas: la _pooled_ (host con `-pooler`) y la _direct_ (mismo host sin `-pooler`).
+3. Completar `.env.staging` (copia de `.env.staging.example`, nunca se versiona): `DATABASE_URL` = pooled, `DATABASE_URL_DIRECT` = direct, `BETTER_AUTH_SECRET` propio (distinto al de producción) y las URLs de Vercel.
+4. Desde tu equipo, con la conexión direct (los scripts usan `DATABASE_URL_DIRECT` si existe):
+
+   ```bash
+   ENV_FILE=.env.staging pnpm db:migrate
+   ENV_FILE=.env.staging pnpm db:seed
+   ENV_FILE=.env.staging pnpm geo:import
+   ENV_FILE=.env.staging pnpm auth:create-admin --email <correo> --name "<nombre>"
+   ```
+
+   En PowerShell: `$env:ENV_FILE='.env.staging'; pnpm db:migrate` (y lo mismo para el resto). Si la terminal ya tiene `DATABASE_URL` definida, `ENV_FILE` se ignora.
+
+5. **Padrón de roles**: es dato personal (Ley 19.628). Para staging preferir una muestra o datos anonimizados: `ENV_FILE=.env.staging pnpm roles:import <ruta/muestra.csv>`. La carga web está deshabilitada en este modo.
+
+La base de staging debe partir vacía: los adjuntos de archivo de una base restaurada desde producción no se pueden descargar aquí.
+
+### 7.3 Proyecto en Vercel
+
+1. **Add New → Project** e importar el repositorio. Framework: Next.js. Node.js 22.
+2. **Build Command**: `pnpm map:worker && pnpm build` (copia el worker de MapLibre a `public/` aunque pnpm no ejecute el hook `prebuild`).
+3. **Environment Variables** (las de `.env.staging` salvo `DATABASE_URL_DIRECT`):
+
+   | Variable                    | Valor                                                       |
+   | --------------------------- | ----------------------------------------------------------- |
+   | `NEXT_PUBLIC_DEPLOY_MODE`   | `staging`                                                   |
+   | `DATABASE_URL`              | cadena pooled de Neon (`…-pooler…?sslmode=require`)         |
+   | `BETTER_AUTH_SECRET`        | secreto propio de staging (`openssl rand -base64 32`)       |
+   | `BETTER_AUTH_URL`           | URL pública del proyecto (`https://….vercel.app`)           |
+   | `NEXT_PUBLIC_APP_URL`       | la misma URL                                                |
+   | `NEXT_PUBLIC_MAP_STYLE_URL` | `https://tiles.openfreemap.org/styles/liberty`              |
+   | `GEOCODER_PROVIDERS`        | `padron`                                                    |
+
+4. Desplegar. Las rutas de analizar y confirmar importación declaran `maxDuration = 300`. En staging el pool de la app abre como máximo 2 conexiones por instancia.
+5. Revisar en la primera prueba que `output: 'standalone'` de `next.config.ts` no interfiere con el build de Vercel.
+
+### 7.4 Verificación
+
+- La franja "Ambiente de pruebas" aparece en mapa, administración, manual y cambio de contraseña.
+- En la ficha de un registro, "Subir archivo" está deshabilitado con el motivo; "Agregar enlace" funciona.
+- Importar una planilla de ≤ 1.000 filas de punta a punta (subir, columnas, revisar, confirmar, revertir); una de 1.001 filas o más de 4 MB se rechaza al subirla con un mensaje claro.
+- En Neon no aparece el esquema `pgboss`.
+
+### 7.5 Límites del plan gratuito
+
+Verificarlos antes de depender de ellos (cambian): Neon gratuito con 0,5 GB por proyecto, 100 CU-horas al mes y pausa tras 5 min sin uso (la primera petición después es lenta); Vercel Hobby con funciones de hasta 300 s, cuerpo de petición de unos 4,5 MB y restricciones de uso comercial. Una importación de 1.000 filas debe terminar dentro de 300 s incluyendo el arranque en frío de Neon: medirlo y ajustar los topes en `src/shared/capabilities.ts` si hace falta.

@@ -4,6 +4,9 @@ import { startCommit } from '@/server/import/commit';
 import { uuidParamSchema } from '@/shared/schemas/common';
 import { importCommitSchema } from '@/shared/schemas/imports';
 
+// Sin worker (staging en Vercel) la tarea corre con `after()` en esta misma invocación: hasta 300 s.
+export const maxDuration = 300;
+
 /** `POST /api/imports/:id/commit` → 202. Escribe en el worker; la UI sigue el progreso con `GET /api/imports/:id`. */
 export const POST = withActor<{ id: string }>(
   async ({ req, params, actor }) => {
