@@ -31,11 +31,12 @@ function assertKey(key: string): void {
 }
 
 // En el build de Next se omite la validación de env (SKIP_ENV_VALIDATION): usamos el valor por defecto.
-const ROOT = path.resolve(process.cwd(), env.STORAGE_DIR || './storage');
+// `turbopackIgnore`: rutas que solo se conocen en ejecución; sin el comentario Turbopack traza todo el proyecto.
+const ROOT = path.resolve(/* turbopackIgnore: true */ process.cwd(), env.STORAGE_DIR || './storage');
 
 function resolveKey(key: string): string {
   assertKey(key);
-  const full = path.resolve(ROOT, key);
+  const full = path.resolve(/* turbopackIgnore: true */ ROOT, key);
   if (!full.startsWith(ROOT)) throw new Error(`Clave de storage fuera del directorio: ${key}`);
   return full;
 }
