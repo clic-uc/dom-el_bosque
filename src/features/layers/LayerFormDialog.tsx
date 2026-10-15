@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useFieldArray, useForm, useWatch, type UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { isValidReason, ReasonField } from '@/components/shared/reason-field';
 import { LayerIcon } from '@/components/shared/layer-icon';
 import { EmptyState, ErrorState, LoadingState } from '@/components/shared/states';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -29,7 +30,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useActor, useCan } from '@/features/auth/actor-context';
 import { HelpLink } from '@/features/help/HelpLink';
-import { errorMessage } from '@/lib/api';
+import { errorMessage, isReasonRequired } from '@/lib/api';
 import { formatDateTime, formatInt } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
@@ -236,6 +237,11 @@ function LayerFormBody({
   const [serverError, setServerError] = useState<string | null>(null);
   const [iconOpen, setIconOpen] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<number | null>(null);
+  /** Cambio que quita el correlativo de registros numerados: el servidor pidió el motivo (§8.8). */
+  const [reasonPrompt, setReasonPrompt] = useState<{ values: FormValues; count: number } | null>(null);
+  const [reason, setReason] = useState('');
+  const numberedCount = layer?.numberedRecordCount ?? 0;
+  const savedAutonumberKey = layer?.fields.find((f) => f.type === 'autonumber')?.key;
 
   // ---- helpers de campos ----
   function otherKeys(exceptIndex: number) {
@@ -318,15 +324,25 @@ function LayerFormBody({
     setPendingRemove(null);
   }
 
-  async function onSubmit(v: FormValues) {
+  async function onSubmit(v: FormValues, withReason?: string) {
     setServerError(null);
     try {
       const saved = isEdit
-        ? await updateMut.mutateAsync({ id: layer.id, patch: toUpdateInput(v) })
+        ? await updateMut.mutateAsync({
+            id: layer.id,
+            patch: withReason ? { ...toUpdateInput(v), reason: withReason } : toUpdateInput(v),
+          })
         : await createMut.mutateAsync(toLayerInput(v));
+      setReasonPrompt(null);
       onSaved?.(saved);
       onOpenChange(false);
     } catch (err) {
+      if (isReasonRequired(err)) {
+        setReason('');
+        setReasonPrompt({ values: v, count: err.details.count });
+        return;
+      }
+      setReasonPrompt(null);
       setServerError(errorMessage(err));
     }
   }
@@ -335,6 +351,11 @@ function LayerFormBody({
   const numberFields = watchedFields.filter((f) => f.type === 'number' && f.label.trim());
   const fieldsError = form.formState.errors.fields?.message ?? form.formState.errors.fields?.root?.message;
   const hasRole = values.hasRole ?? true;
+  const removingNumbered =
+    pendingRemove !== null &&
+    numberedCount > 0 &&
+    !!savedAutonumberKey &&
+    watchedFields[pendingRemove]?.savedKey === savedAutonumberKey;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !pending && onOpenChange(o)}>
@@ -349,7 +370,7 @@ function LayerFormBody({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="flex min-h-0 flex-1 flex-col">
+          <form onSubmit={form.handleSubmit((v) => onSubmit(v))} noValidate className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 space-y-8 overflow-y-auto px-6 py-5">
               {/* ---------- Datos generales ---------- */}
               <section className="space-y-5">
@@ -607,7 +628,7 @@ function LayerFormBody({
                 <p className="flex-1 text-sm font-medium text-destructive" role="alert">
                   {serverError}
                 </p>
-              ) : form.formState.isSubmitted && !form.formState.isValid ? (
+              ) : form.formState.isSubmitted && Object.keys(form.formState.errors).length > 0 ? (
                 <p className="flex-1 text-sm font-medium text-destructive" role="alert">
                   Hay datos por corregir más arriba. Revisa los mensajes en rojo.
                 </p>
@@ -630,17 +651,52 @@ function LayerFormBody({
           onOpenChange={(o) => !o && setPendingRemove(null)}
           title={`¿Eliminar el campo «${pendingRemove !== null ? (watchedFields[pendingRemove]?.label ?? '') : ''}»?`}
           description={
-            <p>
-              Se eliminarán los valores de este campo en los {formatInt(recordCount)} registros de la capa al guardar los
-              cambios. Esta acción no se puede deshacer.
-            </p>
+            <div className="space-y-2">
+              <p>
+                Se eliminarán los valores de este campo en los {formatInt(recordCount)} registros de la capa al guardar
+                los cambios. Esta acción no se puede deshacer.
+              </p>
+              {removingNumbered ? (
+                <p className="text-amber-900">
+                  Es el correlativo de la capa: {formatInt(numberedCount)}{' '}
+                  {numberedCount === 1 ? 'registro perderá su número' : 'registros perderán su número'} asignado por la
+                  plataforma.{' '}
+                  {can('records.deleteNumbered')
+                    ? 'Al guardar se te pedirá el motivo.'
+                    : 'Solo un administrador puede hacerlo.'}
+                </p>
+              ) : null}
+            </div>
           }
           confirmLabel="Eliminar campo"
           destructive
+          disabled={removingNumbered && !can('records.deleteNumbered')}
           onConfirm={() => {
             if (pendingRemove !== null) doRemove(pendingRemove);
           }}
         />
+
+        <ConfirmDialog
+          open={reasonPrompt !== null}
+          onOpenChange={(o) => !o && setReasonPrompt(null)}
+          title="Indica el motivo del cambio"
+          description={
+            <p>
+              Con este cambio, {formatInt(reasonPrompt?.count ?? 0)}{' '}
+              {reasonPrompt?.count === 1 ? 'registro pierde su número' : 'registros pierden su número'} asignado por la
+              plataforma. Los números quedan en el registro de auditoría y no se vuelven a usar.
+            </p>
+          }
+          confirmLabel="Guardar cambios"
+          destructive
+          pending={pending}
+          disabled={!isValidReason(reason)}
+          onConfirm={() => {
+            if (reasonPrompt) void onSubmit(reasonPrompt.values, reason.trim());
+          }}
+        >
+          <ReasonField id="layer-change-reason" value={reason} onChange={setReason} placeholder="Por ejemplo: se reemplaza la numeración" />
+        </ConfirmDialog>
       </DialogContent>
     </Dialog>
   );
@@ -1144,10 +1200,29 @@ function ImportHistory({ layerId }: { layerId: number }) {
 
 function DeleteLayerSection({ layer, onDeleted }: { layer: LayerWithCount; onDeleted: (id: number) => void }) {
   const del = useDeleteLayer();
+  const can = useCan();
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState('');
+  const [reason, setReason] = useState('');
+  // La lista de capas puede venir con el conteo viejo: si el servidor pide el motivo, se pide igual.
+  const [serverCount, setServerCount] = useState<number | null>(null);
+  const numbered = serverCount ?? layer.numberedRecordCount;
+  const canDeleteNumbered = can('records.deleteNumbered');
+  const needsReason = numbered > 0;
   const needsName = layer.recordCount > 0;
   const nameMatches = normalizeText(typed) === normalizeText(layer.name);
+  const numberedText = `${formatInt(numbered)} ${numbered === 1 ? 'registro tiene' : 'registros tienen'} un número asignado por la plataforma`;
+
+  if (numbered > 0 && !canDeleteNumbered) {
+    return (
+      <section className="space-y-3 rounded-lg border border-destructive/40 p-4">
+        <h3 className="text-lg font-semibold text-destructive">Eliminar capa</h3>
+        <p className="text-base text-muted-foreground">
+          {numberedText}. Solo un administrador puede eliminar esta capa.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-3 rounded-lg border border-destructive/40 p-4">
@@ -1164,7 +1239,10 @@ function DeleteLayerSection({ layer, onDeleted }: { layer: LayerWithCount; onDel
         open={open}
         onOpenChange={(o) => {
           setOpen(o);
-          if (!o) setTyped('');
+          if (!o) {
+            setTyped('');
+            setReason('');
+          }
         }}
         title={`¿Eliminar la capa «${layer.name}»?`}
         description={
@@ -1173,22 +1251,25 @@ function DeleteLayerSection({ layer, onDeleted }: { layer: LayerWithCount; onDel
               ? `Se eliminarán definitivamente sus ${formatInt(layer.recordCount)} registros con sus adjuntos y comentarios, además del historial de importaciones de la capa.`
               : 'La capa se eliminará definitivamente.'}{' '}
             Esta acción no se puede deshacer.
+            {needsReason ? ` ${numberedText}; esos números no se vuelven a usar y quedan en el registro de auditoría.` : null}
           </p>
         }
         confirmLabel="Eliminar capa"
         destructive
         pending={del.isPending}
-        disabled={needsName && !nameMatches}
+        disabled={(needsName && !nameMatches) || (needsReason && !isValidReason(reason))}
         onConfirm={async () => {
           try {
-            await del.mutateAsync(layer.id);
+            await del.mutateAsync({ id: layer.id, reason: needsReason ? reason.trim() : undefined });
             setOpen(false);
             onDeleted(layer.id);
-          } catch {
-            // el toast del hook ya informó el error
+          } catch (err) {
+            if (isReasonRequired(err)) setServerCount(err.details.count);
+            // los demás errores ya los informó el toast del hook
           }
         }}
       >
+        {needsReason ? <ReasonField id="delete-layer-reason" value={reason} onChange={setReason} /> : null}
         {needsName ? (
           <div className="space-y-2">
             <Label htmlFor="delete-layer-name" className="text-base">

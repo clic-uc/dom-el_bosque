@@ -2,7 +2,7 @@ import { db } from '@/db/client';
 import { json, noContent, parseBody, parseParams, privateNoStore, withActor } from '@/server/http';
 import * as layersService from '@/server/services/layers';
 import { idParamSchema } from '@/shared/schemas/common';
-import { updateLayerSchema } from '@/shared/schemas/layers';
+import { deleteLayerSchema, updateLayerSchema } from '@/shared/schemas/layers';
 
 type Params = { id: string };
 
@@ -24,11 +24,15 @@ export const PATCH = withActor<Params>(
   { roles: ['editor', 'admin'] },
 );
 
-/** DELETE /api/layers/:id → 204 (editor/admin). Borra en cascada registros, contadores e importaciones. */
+/**
+ * DELETE /api/layers/:id → 204 (editor/admin; solo admin y con `{ reason }` si tiene registros numerados).
+ * Borra en cascada registros, contadores e importaciones.
+ */
 export const DELETE = withActor<Params>(
-  async ({ params, actor }) => {
+  async ({ req, params, actor }) => {
     const id = parseParams(params.id, idParamSchema);
-    await layersService.deleteLayer(db, actor, id);
+    const { reason } = await parseBody(req, deleteLayerSchema);
+    await layersService.deleteLayer(db, actor, id, reason);
     return noContent();
   },
   { roles: ['editor', 'admin'] },

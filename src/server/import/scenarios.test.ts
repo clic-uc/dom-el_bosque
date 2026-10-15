@@ -7,6 +7,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import {
   attachments,
+  auditLogs,
   importRemovals,
   importRows,
   imports,
@@ -28,7 +29,7 @@ import {
   insertRecord,
   setupDbSuite,
 } from '../services/__tests__/helpers';
-import { previewNextNumber } from '../services/numbering';
+import { assignNumber, previewNextNumber } from '../services/numbering';
 import { storage } from '../storage';
 import { csvBuffer, fakeFile, roleOf, xlsxBuffer, type Cell } from './__tests__/fixtures';
 import { runAnalyze, startAnalyze } from './analyze';
@@ -263,6 +264,68 @@ describe('Reemplazo completo (§8.5 paso 4)', () => {
     expect(fresh.id).toBeGreaterThan(Math.max(platform.id, imported.id, keep.id));
   });
 
+  it('al confirmar conserva los marcados que después del análisis recibieron un correlativo o un adjunto', async () => {
+    const layer = await createLayer({
+      hasRole: true,
+      fields: [
+        field('n_permiso', 'N° Permiso', 'autonumber', { options: { reset: 'never' } }),
+        field('rut', 'Rut'),
+      ],
+      uniqueKeys: ['rut'],
+    });
+    await createRole(roleOf(1), { lat: -33.56, lon: -70.66 });
+    const later = (rut: string) =>
+      insertRecord({ layerId: layer.id, roleId: roleOf(1), attributes: { rut } });
+    const getsNumber = await later('2-7');
+    const getsAttachment = await later('3-5');
+    const plain = await later('4-3');
+
+    const id = await uploadAndAnalyze(
+      layer.id,
+      'completa.csv',
+      csvBuffer(['Rol', 'Rut'], [[roleOf(1), '1-9']]),
+      analyzeInput({ Rol: 'roleId', Rut: 'rut' }, { fullReplace: true }),
+    );
+    expect((await patchRemovals(db, editor, id, { all: true, resolution: 'delete' })).updated).toBe(3);
+
+    // entre el análisis y la confirmación
+    await assignNumber(db, editor, getsNumber.id);
+    await db.insert(attachments).values({
+      entityType: 'record',
+      entityId: String(getsAttachment.id),
+      kind: 'link',
+      title: 'Plano',
+      url: 'https://x',
+    });
+
+    const done = await commit(id);
+    expect(done).toMatchObject({ status: 'COMPLETED', createdCount: 1, deletedCount: 1 });
+    expect(await db.select().from(records).where(eq(records.id, getsNumber.id))).toHaveLength(1);
+    expect(await db.select().from(records).where(eq(records.id, getsAttachment.id))).toHaveLength(1);
+    expect(await db.select().from(records).where(eq(records.id, plain.id))).toHaveLength(0);
+
+    const removals = await db.select().from(importRemovals).where(eq(importRemovals.importId, id));
+    const byRecord = new Map(removals.map((r) => [r.recordId, r]));
+    expect(byRecord.get(getsNumber.id)).toMatchObject({
+      deletable: false,
+      resolution: 'keep',
+      deleted: false,
+      reason: 'Se le asignó un correlativo después del análisis',
+    });
+    expect(byRecord.get(getsAttachment.id)).toMatchObject({
+      deletable: false,
+      resolution: 'keep',
+      deleted: false,
+      reason: 'Tiene documentos adjuntos',
+    });
+    expect(byRecord.get(plain.id)).toMatchObject({ deleted: true });
+    const [log] = await db
+      .select()
+      .from(auditLogs)
+      .where(and(eq(auditLogs.action, 'IMPORT'), eq(auditLogs.entityId, id)));
+    expect(log!.metadata).toMatchObject({ deleted: 1, keptProtected: 2 });
+  });
+
   it('no se permite sin campos únicos', async () => {
     const layer = await createLayer({ hasRole: true, fields: baseFields(), uniqueKeys: [] });
     const source = await uploadImport(
@@ -319,6 +382,70 @@ describe('Correlativos históricos (§8.5 paso 6 / §8.8)', () => {
       .from(records)
       .where(and(eq(records.layerId, layer.id), sql`${records.attributes}->>'propietario' = 'Último'`));
     expect(last!.attributes.n_permiso).toBe(6123);
+  });
+
+  it('revertir una importación que quitaría números asignados: editor no; admin con motivo', async () => {
+    const layer = await createLayer({
+      hasRole: true,
+      fields: [
+        field('n_permiso', 'N° Permiso', 'autonumber', { options: { reset: 'never' } }),
+        field('rut', 'Rut'),
+        field('propietario', 'Propietario'),
+      ],
+      uniqueKeys: ['rut'],
+    });
+    await createRole(roleOf(1), { lat: -33.56, lon: -70.66 });
+    const existing = await insertRecord({ layerId: layer.id, roleId: roleOf(1), attributes: { rut: '1-9' } });
+    const id = await uploadAndAnalyze(
+      layer.id,
+      'r.csv',
+      csvBuffer(
+        ['Rol', 'Rut', 'Propietario'],
+        [
+          [roleOf(1), '1-9', 'Actualizado'],
+          [roleOf(1), '2-7', 'Nuevo'],
+        ],
+      ),
+      analyzeInput(
+        { Rol: 'roleId', Rut: 'rut', Propietario: 'propietario' },
+        { duplicateStrategy: 'update' },
+      ),
+    );
+    expect(await commit(id)).toMatchObject({ createdCount: 1, updatedCount: 1 });
+    const [created] = await db
+      .select()
+      .from(records)
+      .where(and(eq(records.layerId, layer.id), sql`${records.attributes}->>'rut' = '2-7'`));
+    // los dos reciben número después de importar: revertir se los quitaría
+    await assignNumber(db, editor, existing.id);
+    await assignNumber(db, editor, created!.id);
+
+    await expect(revertImport(db, editor, id, { force: true })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(revertImport(db, admin, id, { force: true })).rejects.toMatchObject({
+      code: 'VALIDATION',
+      details: { reasonRequired: true, count: 2 },
+    });
+    // con motivo, sin force: sigue el aviso de "modificados después"
+    await expect(
+      revertImport(db, admin, id, { force: false, reason: 'Archivo equivocado' }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    const result = await revertImport(db, admin, id, { force: true, reason: 'Archivo equivocado' });
+    expect(result).toMatchObject({ deletedRecords: 1, restoredRecords: 1 });
+    const [restored] = await db.select().from(records).where(eq(records.id, existing.id));
+    expect(restored!.attributes).toEqual({ rut: '1-9' });
+    expect(restored!.numberAssignedAt).toBeNull();
+    const [log] = await db
+      .select()
+      .from(auditLogs)
+      .where(and(eq(auditLogs.action, 'REVERT'), eq(auditLogs.entityId, id)));
+    expect(log!.metadata).toMatchObject({
+      reason: 'Archivo equivocado',
+      numberedRecords: expect.arrayContaining([
+        { id: existing.id, number: 1 },
+        { id: created!.id, number: 2 },
+      ]),
+    });
   });
 
   it('al actualizar no pisa un número asignado por la plataforma', async () => {

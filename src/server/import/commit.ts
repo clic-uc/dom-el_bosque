@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { DbOrTx } from '@/db/client';
-import { importRemovals, importRows, imports, records, roles } from '@/db/schema';
+import { attachments, importRemovals, importRows, imports, records, roles } from '@/db/schema';
 import type { CoordsSource } from '@/shared/constants';
 import type { RecordGeocodeInfo } from '@/shared/schemas/geocode';
 import type { ParsedRow } from '@/shared/schemas/import-rows';
@@ -198,6 +198,8 @@ export async function runCommit(db: DbOrTx, importId: string, deps: CommitDeps =
   const batchSize = deps.batchSize ?? 500;
   const actor = workerActor(imp);
   const counts = { created: 0, updated: 0, skipped: 0, failed: 0, deleted: 0 };
+  /** Marcados para borrar que al confirmar tenían correlativo o adjuntos: se conservan (§8.8). */
+  let keptProtected = 0;
   let failedBatches = 0;
 
   try {
@@ -381,16 +383,50 @@ export async function runCommit(db: DbOrTx, importId: string, deps: CommitDeps =
       await setProgress('writing');
     }
 
-    // Reemplazo completo: borrar los marcados (todos sin adjuntos ni correlativo, porque son los únicos borrables).
+    // Reemplazo completo: borrar los marcados. El análisis los marcó sin adjuntos ni correlativo, pero es una foto
+    // (el borrador dura días): se vuelve a mirar con lock y los que hoy tienen alguno de los dos se conservan.
     for (let i = 0; i < removals.length; i += batchSize) {
       const batch = removals.slice(i, i + batchSize);
       const ids = batch.map((r) => r.recordId);
       try {
         const keys = await db.transaction(async (tx) => {
-          const existingRows = await tx
+          const lockedRows = await tx
             .select(recordColumns)
             .from(records)
-            .where(and(inArray(records.id, ids), eq(records.layerId, layer.id)));
+            .where(and(inArray(records.id, ids), eq(records.layerId, layer.id)))
+            .for('update');
+          if (lockedRows.length === 0) return [] as string[];
+          const withAttachments = new Set(
+            (
+              await tx
+                .selectDistinct({ entityId: attachments.entityId })
+                .from(attachments)
+                .where(
+                  and(
+                    eq(attachments.entityType, 'record'),
+                    inArray(
+                      attachments.entityId,
+                      lockedRows.map((r) => String(r.id)),
+                    ),
+                  ),
+                )
+            ).map((a) => Number(a.entityId)),
+          );
+          const protectedRows = lockedRows.filter((r) => r.numberAssignedAt || withAttachments.has(r.id));
+          for (const r of protectedRows) {
+            await tx
+              .update(importRemovals)
+              .set({
+                deletable: false,
+                resolution: 'keep',
+                reason: r.numberAssignedAt
+                  ? 'Se le asignó un correlativo después del análisis'
+                  : 'Tiene documentos adjuntos',
+              })
+              .where(and(eq(importRemovals.importId, importId), eq(importRemovals.recordId, r.id)));
+          }
+          keptProtected += protectedRows.length;
+          const existingRows = lockedRows.filter((r) => !protectedRows.includes(r));
           if (existingRows.length === 0) return [] as string[];
           const values = sql.join(
             existingRows.map((r) => sql`(${r.id}::int, ${JSON.stringify(jsonify(r))}::jsonb)`),
@@ -452,7 +488,13 @@ export async function runCommit(db: DbOrTx, importId: string, deps: CommitDeps =
         entityType: 'IMPORT',
         entityId: importId,
         layerId: layer.id,
-        metadata: { fileName: imp.fileName, fullReplace: imp.fullReplace, ...counts, failedBatches },
+        metadata: {
+          fileName: imp.fileName,
+          fullReplace: imp.fullReplace,
+          ...counts,
+          failedBatches,
+          ...(keptProtected ? { keptProtected } : {}),
+        },
       });
     });
     if (imp.fileKey) await storage.delete(imp.fileKey);

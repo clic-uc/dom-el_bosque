@@ -7,6 +7,7 @@ import {
   MAX_LAYER_FIELDS,
   RESERVED_FIELD_KEYS,
 } from '../constants';
+import { reasonSchema } from './common';
 
 export const fieldKeySchema = z
   .string()
@@ -116,6 +117,9 @@ export const createLayerSchema = refineLayerReferences(z.object(layerBaseShape))
 export type CreateLayerInput = z.input<typeof createLayerSchema>;
 export type CreateLayerData = z.output<typeof createLayerSchema>;
 
+/** `DELETE /api/layers/:id`: motivo, si la capa tiene registros con número asignado (solo admin, §8.8). */
+export const deleteLayerSchema = z.object({ reason: reasonSchema.optional() });
+
 export const fieldRenameSchema = z.object({ from: fieldKeySchema, to: fieldKeySchema });
 export type FieldRename = z.infer<typeof fieldRenameSchema>;
 
@@ -131,6 +135,8 @@ export const updateLayerSchema = refineLayerReferences(
     icon: z.string().min(1).max(50).optional(),
     iconColor: hexColorSchema.optional(),
     sortOrder: z.number().int().min(0).optional(),
+    /** Motivo, si el cambio quita o cambia el correlativo de una capa con números asignados (solo admin, §8.8). */
+    reason: reasonSchema.optional(),
     /** Renombres de clave `from → to` que la UI pidió explícitamente (§7.2). */
     renames: z.array(fieldRenameSchema).default([]),
     /** Confirmación de conversión de tipo para estas claves (§7.2). */
