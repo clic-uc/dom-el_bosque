@@ -113,7 +113,7 @@ El repositorio ignora `roles.csv` y `data/roles*.csv` por si se deja una copia l
 SMOKE_EMAIL=dom@imelbosque.cl SMOKE_PASSWORD='la-contraseña' ./scripts/smoke.sh https://sigdomelbosque.cl
 ```
 
-Comprueba `/api/health`, la página de ingreso, que la API exige sesión (401), el inicio de sesión y la lista de capas.
+Comprueba `/api/health`, la página de ingreso, que la API exige sesión (401), el inicio de sesión y la lista de capas. Contra `https://localhost` (certificado local de Caddy), agrega `SMOKE_INSECURE=1`.
 
 ## 4. Operación diaria
 
@@ -150,7 +150,7 @@ Las migraciones de base de datos corren automáticamente en el entrypoint de `ap
    git checkout <commit-anterior>
    docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
    ```
-   Como alternativa más rápida, antes de actualizar etiqueta la imagen que funciona (`docker tag sigdom-app:latest sigdom-app:estable`) y, si hace falta, vuelve a ella con `docker tag sigdom-app:estable sigdom-app:latest && docker compose -f docker-compose.prod.yml up -d --no-build app worker`.
+   Como alternativa más rápida, antes de actualizar etiqueta la imagen que funciona (`docker tag sigdom-app:latest sigdom-app:estable`) y, si hace falta, vuelve a ella con `docker tag sigdom-app:estable sigdom-app:latest && docker compose --env-file .env.production -f docker-compose.prod.yml up -d --no-build app worker`. Sin `--env-file`, compose recrearía `db` sin su contraseña en el entorno.
 3. Si la migración nueva ya modificó la base y la versión anterior no la entiende, restaura el respaldo previo (4.5) **después** de volver al código anterior.
 4. Documenta el incidente y corrige en una rama antes de reintentar.
 
@@ -200,6 +200,7 @@ cp .env.production.example .env.production
 # En .env.production: SITE_ADDRESS=localhost, BETTER_AUTH_URL=https://localhost, NEXT_PUBLIC_APP_URL=https://localhost
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 curl -k https://localhost/api/health
+SMOKE_INSECURE=1 ./scripts/smoke.sh https://localhost
 ```
 
 Caddy emite un certificado local autofirmado para `localhost` (el navegador avisará). Para probar solo la imagen sin Caddy, el `docker-compose.yml` de desarrollo tiene el perfil `full` (`docker compose --profile full up --build`), que publica la app en `http://localhost:3000`.

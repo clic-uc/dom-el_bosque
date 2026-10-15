@@ -15,8 +15,15 @@ services:
   db:
     image: postgis/postgis:17-3.5
     restart: unless-stopped
-    # POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD salen de .env.production (deben calzar con DATABASE_URL).
-    env_file: .env.production
+    # Solo las tres variables que usa la imagen de Postgres, interpoladas desde `--env-file .env.production`
+    # (deben calzar con DATABASE_URL). Sin `env_file`: la base no recibe BETTER_AUTH_SECRET ni el resto.
+    # Los valores por defecto dejan funcionar los comandos sin `--env-file` (respaldo del cron, `exec`) sobre
+    # una base ya creada, porque Postgres solo las lee al inicializarla. Una instalación nueva sin
+    # `--env-file` falla al crear la base por falta de contraseña.
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sigdom}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
     # Sin `ports`: la base solo es accesible desde la red interna de compose.
     volumes:
       - db_data:/var/lib/postgresql/data
