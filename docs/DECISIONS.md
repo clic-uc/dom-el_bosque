@@ -89,6 +89,8 @@ Registro de toda desviación o precisión respecto de `PROMPT.md`. Formato: fech
 
 **2026-10-05 — Límite de adjuntos en cliente** con el valor por defecto (20 MB) y los tipos de `constants.ts`; la validación real es del servidor.
 
+**2026-10-15 — Adjuntos con el contenido verificado y respuestas sin claves internas.** Al subir un adjunto, sus primeros bytes deben corresponder a la extensión (`src/server/file-signature.ts`): `%PDF-` en el primer KB, las cabeceras de JPEG, PNG, GIF, WebP y TIFF (incluido BigTIFF), OLE2 o ZIP para los seis formatos de Office (un Office nuevo con contraseña es OLE2), `AC10` para DWG, y para DXF la firma binaria o texto que empiece con `0`/`SECTION` o un comentario `999`. Si no calza, `400 VALIDATION` y el archivo no llega al storage. Se rechazan un `.xls` que en realidad es una página HTML, como los que exportan algunos sistemas, y un `.doc` guardado como RTF: hay que guardarlos de nuevo en su formato. Las respuestas de adjuntos ya no traen `storageKey`, ni las de importaciones `fileKey` (`GET /api/imports` y `GET /api/imports/:id`); el servidor sigue leyendo esas claves de la fila.
+
 ## Fase 10 — Manual
 
 **2026-10-05 — `meta` duplicado en `registry.ts` y en cada MDX.** El índice y la navegación leen el registro para no cargar 24 módulos por vista; un test garantiza que coincidan. `mdx-components.tsx` en la raíz, sin `@tailwindcss/typography`. Tres páginas redactadas completas (primeros-pasos, registros/asignar-numero, capas/campos-unicos); el resto en borrador con esquema.
