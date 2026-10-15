@@ -43,15 +43,17 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Node 22 + pnpm (corepack)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
+          # v5 cachea sola según `packageManager` y llama a pnpm antes de `corepack enable`; el store ya se cachea abajo.
+          package-manager-cache: false
       - run: corepack enable
       - name: Caché del store de pnpm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -104,13 +106,17 @@ jobs:
     env:
       E2E_BASE_URL: http://localhost:3000
       NODE_ENV: production
+      # Absoluta: el servidor standalone cambia su directorio de trabajo y el worker corre desde la raíz.
+      STORAGE_DIR: ${{ github.workspace }}/storage
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
+          # v5 cachea sola según `packageManager` y llama a pnpm antes de `corepack enable`; el store ya se cachea abajo.
+          package-manager-cache: false
       - run: corepack enable
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -129,6 +135,9 @@ jobs:
         run: |
           pnpm auth:create-admin --email admin@e2e.test --name "Admin E2E" --password 'Sigdom-e2e-2026!'
           pnpm e2e:seed --temp
+        env:
+          # El job corre con NODE_ENV=production; estos usuarios son solo para la base efímera de la CI.
+          E2E_ALLOW_PRODUCTION: '1'
 
       - name: Build de producción
         run: pnpm build
@@ -136,7 +145,12 @@ jobs:
       - name: Levantar app y worker
         run: |
           mkdir -p storage
-          nohup pnpm start > app.log 2>&1 &
+          # Igual que la imagen (Dockerfile, etapa runner): servidor standalone con estáticos, public y contenido.
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+          cp -r content .next/standalone/content
+          mkdir -p .next/standalone/data && cp -r data/geo .next/standalone/data/geo
+          PORT=3000 HOSTNAME=0.0.0.0 nohup node .next/standalone/server.js > app.log 2>&1 &
           nohup pnpm exec tsx scripts/worker.ts > worker.log 2>&1 &
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:3000/api/health >/dev/null 2>&1; then echo "app lista"; exit 0; fi
@@ -164,7 +178,7 @@ jobs:
 
       - name: Reporte de Playwright
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-report
           path: |
