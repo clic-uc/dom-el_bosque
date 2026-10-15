@@ -68,7 +68,7 @@ Al superarlos: `429 RATE_LIMITED` (Better Auth responde 429 con su propio cuerpo
 
 ### Tamaños
 
-Importaciones: `MAX_IMPORT_FILE_MB` (10 por defecto). Adjuntos: `MAX_ATTACHMENT_MB` (20 por defecto) y solo los tipos/extensiones de `attachmentAllowedMimeTypes` / `attachmentAllowedExtensions` (`src/shared/constants.ts`). Padrón (`POST /api/roles/import`): 20 MB. Las tres rutas de subida (`POST /api/attachments` con archivo, `POST /api/imports` y `POST /api/roles/import`) rechazan por `Content-Length` antes de leer el cuerpo, con un margen de 1 MB para el multipart: si se pasa, o si falta `Content-Length`, responden `400 VALIDATION`. En producción, Caddy corta cualquier petición de más de 25 MB con `413` antes de que llegue a la app.
+Importaciones: `MAX_IMPORT_FILE_MB` (10 por defecto). Adjuntos: `MAX_ATTACHMENT_MB` (20 por defecto) y solo los tipos/extensiones de `attachmentAllowedMimeTypes` / `attachmentAllowedExtensions` (`src/shared/constants.ts`). Padrón (`POST /api/roles/import`): 20 MB. Las tres rutas de subida (`POST /api/attachments` con archivo, `POST /api/imports` y `POST /api/roles/import`) rechazan por `Content-Length` antes de leer el cuerpo, con un margen de 1 MB para el multipart: si se pasa, o si falta `Content-Length`, responden `400 VALIDATION`. En producción, Caddy corta en 25 MB el cuerpo que la app lea y responde `413`; no rechaza por `Content-Length`, así que una petición que la app no lee (sin sesión, o una subida que rechaza por su tamaño) recibe la respuesta de la app.
 
 ### Fechas y números
 

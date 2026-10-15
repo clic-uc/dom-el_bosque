@@ -6,8 +6,9 @@
 {$SITE_ADDRESS:sigdomelbosque.cl} {
 	encode gzip zstd
 
-	# Tope de cualquier petición: un adjunto de MAX_ATTACHMENT_MB (20) más el multipart. Si se sube
-	# MAX_ATTACHMENT_MB por encima de 23, subir también este valor. Responde 413 sin llegar a la app.
+	# Tope del cuerpo que llega a la app: un adjunto de MAX_ATTACHMENT_MB (20) más el multipart. Caddy no
+	# rechaza por Content-Length: corta la lectura al pasar el tope y responde 413. Las rutas de subida ya
+	# rechazan antes por Content-Length. Si MAX_ATTACHMENT_MB sube de 23, subir también este valor.
 	request_body {
 		max_size 25MB
 	}
