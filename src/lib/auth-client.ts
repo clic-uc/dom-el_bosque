@@ -1,17 +1,17 @@
 'use client';
 
-import { adminClient, inferAdditionalFields } from 'better-auth/client/plugins';
+import { inferAdditionalFields } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
 import type { Auth } from '@/server/auth';
-import { ac, roles } from '@/shared/permissions';
 
 export const authClient = createAuthClient({
-  plugins: [adminClient({ ac, roles }), inferAdditionalFields<Auth>()],
+  plugins: [inferAdditionalFields<Auth>()],
 });
 
-
 /** Mensajes en español para los códigos de error de Better Auth (§10.1). */
-export function authErrorMessage(error: { code?: string; message?: string; status?: number } | null | undefined): string {
+export function authErrorMessage(
+  error: { code?: string; message?: string; status?: number } | null | undefined,
+): string {
   if (!error) return 'Ocurrió un error. Intenta de nuevo.';
   if (error.status === 429) return 'Demasiados intentos. Espera un minuto e intenta de nuevo.';
   switch (error.code) {

@@ -83,6 +83,8 @@ Registro de toda desviación o precisión respecto de `PROMPT.md`. Formato: fech
 
 **2026-10-05 — Headers de admin para Better Auth.** Los Route Handlers pasan `req.headers` al servicio y este llama `auth.api.setRole/setUserPassword/revokeUserSessions/removeUser({ body, headers })`; `createUser` se llama sin headers (el rol lo verificó `withActor`). Los `APIError` de Better Auth se traducen a errores de dominio en español.
 
+**2026-10-15 — `/api/auth/*` limitado a lo que usa la interfaz.** El handler de `app/api/auth/[...all]/route.ts` deja pasar solo `GET get-session` y `POST` a `sign-in/email`, `sign-out`, `change-password` y `update-user`. El resto responde `404 NOT_FOUND` con el formato de error de la API. Es una lista permitida y no `disabledPaths` de Better Auth, que es una lista de bloqueo: así queda fuera también lo que agregue una versión futura. La gestión de usuarios sigue igual, porque `src/server/services/users.ts` llama a `auth.api.*` en el servidor. Se aparta de §6.1 en dos puntos. El rol `admin` deja `adminAc` y recibe solo `user: set-role, set-password, delete` y `session: revoke`, los permisos que usan esos servicios. El cliente ya no carga `adminClient`, porque ninguna pantalla usa `authClient.admin.*`.
+
 **2026-10-05 — Un admin no puede asignarse contraseña temporal desde el panel** (le cerraría la sesión): usa "Mi cuenta". Cambios de rol con confirmación solo para "Nombrar administrador" y "Quitar rol"; rol por defecto "Visor" al crear usuarios.
 
 **2026-10-05 — `getPolygonStats` incluye polígonos con 0 registros** (LEFT JOIN, al final) para que coropletas y paneles tengan la lista completa. ETag de polígonos `W/"polygons-<kind>-<count>-<max(updated_at)>"`.
