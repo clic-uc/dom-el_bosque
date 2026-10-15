@@ -49,6 +49,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22
+          # v5 cachea sola según `packageManager` y llama a pnpm antes de `corepack enable`; el store ya se cachea abajo.
+          package-manager-cache: false
       - run: corepack enable
       - name: Caché del store de pnpm
         uses: actions/cache@v5
@@ -111,6 +113,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+          # v5 cachea sola según `packageManager` y llama a pnpm antes de `corepack enable`; el store ya se cachea abajo.
+          package-manager-cache: false
       - run: corepack enable
       - uses: actions/cache@v5
         with:
