@@ -302,6 +302,31 @@ describe('exportCsv (§7.6)', () => {
     expect(text2.split('\r\n')[0]).toContain('id,roleId,lat,lon');
     await expect(exportService.exportCsv(db, 99999, { delimiter: ';' })).rejects.toBeInstanceOf(NotFoundError);
   });
+
+  it('guarda como texto las celdas que una planilla leería como fórmula, sin tocar los números negativos', async () => {
+    const layer = await createLayer({ hasRole: false, fields: [field('nota', '=Nota'), field('monto', 'Monto', 'number')] });
+    const notas = ['=1+1', '@SUM(A1)', '+HYPERLINK("http://x")', '-5 años'];
+    await insertRecords(
+      notas.map((nota, i) => ({
+        layerId: layer.id,
+        lat: -33.565407,
+        lon: -70.66,
+        coordsSource: 'own' as const,
+        attributes: { nota, monto: -1234.5 - i },
+      })),
+    );
+
+    const { stream } = await exportService.exportCsv(db, layer.id, { delimiter: ';' });
+    const lines = (await readStream(stream)).replace(/^\uFEFF/, '').split('\r\n');
+    expect(lines[0]).toBe("id;lat;lon;origen_coordenadas;'=Nota;Monto;comments");
+    const cells = lines.slice(1, -1).map((l) => l.split(';'));
+    expect(cells.map((c) => c[4])).toEqual(["'=1+1", "'@SUM(A1)", `"'+HYPERLINK(""http://x"")"`, "'-5 años"]);
+    for (const c of cells) {
+      expect(c[1]).toBe('-33.565407');
+      expect(c[2]).toBe('-70.66');
+      expect(c[5]).toMatch(/^-\d/);
+    }
+  });
 });
 
 describe('rendimiento (Fase 5)', () => {
