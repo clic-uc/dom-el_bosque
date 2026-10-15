@@ -31,6 +31,12 @@ describe('assertBodySize', () => {
     expect(() => assertBodySize(upload(21 * MB + 1), 20 * MB, 'x')).toThrow(ValidationError);
   });
 
+  it('con un tope inválido no deja pasar nada', () => {
+    for (const max of [NaN, 0, -1, Infinity]) {
+      expect(() => assertBodySize(upload(10), max, 'x'), String(max)).toThrow(/Tope de subida inválido/);
+    }
+  });
+
   it('rechaza si falta Content-Length', () => {
     const req = upload();
     req.headers.delete('content-length');

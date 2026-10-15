@@ -114,6 +114,8 @@ const MULTIPART_MARGIN_BYTES = 1024 * 1024;
  * Las rutas que la usan quedan fuera del `matcher` de `proxy.ts`: si no, Next copia el cuerpo entero antes.
  */
 export function assertBodySize(req: Request, maxBytes: number, message: string): void {
+  // Un tope mal configurado (p. ej. NaN si falta la variable y se omitió la validación de env) no deja pasar nada.
+  if (!Number.isFinite(maxBytes) || maxBytes <= 0) throw new Error(`Tope de subida inválido: ${maxBytes}`);
   const header = req.headers.get('content-length');
   const length = header === null ? NaN : Number(header);
   if (!Number.isFinite(length) || length < 0) {
