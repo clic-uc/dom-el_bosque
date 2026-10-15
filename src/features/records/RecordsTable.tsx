@@ -291,6 +291,9 @@ export function RecordsTable({ layer, params, onPageChange, onPageSizeChange, on
   }, [layer.hasRole, autoField, editableFields, editingId, draft, canEdit, update.isPending, onOpenRole, onViewOnMap]);
 
   const data = query.data?.data ?? [];
+  // React Compiler no memoiza este componente porque `useReactTable` devuelve funciones que no se pueden
+  // memoizar sin dejar la tabla desactualizada; es lo esperado con TanStack Table.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
     columns,

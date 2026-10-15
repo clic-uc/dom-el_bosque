@@ -34,6 +34,7 @@ import { csvBuffer, fakeFile, roleOf, xlsxBuffer, type Cell } from './__tests__/
 import { runAnalyze, startAnalyze } from './analyze';
 import { cleanupExpiredImports } from './cleanup';
 import { runCommit, startCommit } from './commit';
+import { buildErrorsCsv } from './errors-csv';
 import { runGeocodeExternal } from './geocode-external';
 import {
   bulkRows,
@@ -279,6 +280,34 @@ describe('Reemplazo completo (§8.5 paso 4)', () => {
         analyzeInput({ Rol: 'roleId', 'N° Permiso': 'n_permiso' }, { fullReplace: true }),
       ),
     ).rejects.toThrow(/campos únicos/);
+  });
+});
+
+describe('CSV de errores', () => {
+  it('guarda como texto las celdas que una planilla leería como fórmula', async () => {
+    const layer = await createLayer({ hasRole: true, fields: baseFields() });
+    const id = await uploadAndAnalyze(
+      layer.id,
+      'formulas.csv',
+      csvBuffer(
+        ['Rol', 'N° Permiso', '=Extra'],
+        [
+          ['=1+1', 1, '-33.565407'],
+          ['@SUM(A1)', 2, '-5 años'],
+        ],
+      ),
+      analyzeInput({ Rol: 'roleId', 'N° Permiso': 'n_permiso', '=Extra': null }),
+    );
+    const { csv, count } = await buildErrorsCsv(db, id);
+    expect(count).toBe(2);
+    const lines = csv
+      .replace(/^\uFEFF/, '')
+      .trim()
+      .split('\r\n');
+    expect(lines[0]).toBe("Fila;Rol;N° Permiso;'=Extra;Error");
+    const cells = lines.slice(1).map((l) => l.split(';'));
+    expect(cells.map((c) => c[1])).toEqual(["'=1+1", "'@SUM(A1)"]);
+    expect(cells.map((c) => c[3])).toEqual(['-33.565407', "'-5 años"]);
   });
 });
 

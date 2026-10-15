@@ -111,6 +111,8 @@ Registro de toda desviación o precisión respecto de `PROMPT.md`. Formato: fech
 
 **2026-10-05 — Bugs de fundación corregidos.** (1) `exportCsv` exportaba solo 2.000 filas: ahora pagina por cursor `id > lastId`. (2) `getGeocoder` quedaba atado a la primera transacción recibida: se construye sobre `db`. (3) `updateCoordinates` con alcance rol contaba dos veces el registro movido. (4) `setNumber` fallaba si otro registro tenía texto en el campo correlativo. (5) Un rol mal formado en la URL daba 500: `parseRoleIdParam` → 400. (6) Buscar "50-2" no encontraba `00050-00002`: `listRecords` aplica los mismos patrones de prefijo que `searchRoles`.
 
+**2026-10-15 — CSV exportados con fórmulas como texto.** El CSV de una capa y el CSV de errores de importación anteponen `'` a toda celda (incluidos los encabezados) que empiece con `=`, `+`, `@`, tabulador o retorno de carro, o con `-` seguido de algo que no sea un número simple. Así Excel o LibreOffice la muestran como texto y no la ejecutan. Los números negativos (`-33.565407`, `-1.234,5`) y el `-` solo, que las planillas usan de relleno, quedan intactos (`src/server/csv.ts`). No se usa `escapeFormulae` de Papa porque también marca los números negativos. Si un CSV exportado se vuelve a importar, el apóstrofo queda en el texto.
+
 **2026-10-05 — Búsqueda de texto libre.** `attributes::text ILIKE '%q%'` ronda 0,7 s con 40k registros. Pendiente de evaluar con datos reales: índice `GIN ((attributes::text) gin_trgm_ops)` (§7.3). El criterio de la Fase 5 (página de 50 con filtro por valor < 300 ms) se cumple.
 
 **2026-10-05 — Tests de servicios con `pg_advisory_lock` por archivo** en una conexión reservada, además de `fileParallelism: false`.
