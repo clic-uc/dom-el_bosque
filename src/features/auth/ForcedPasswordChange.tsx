@@ -32,8 +32,6 @@ export function ForcedPasswordChange({ forced }: { forced: boolean }) {
       setError(authErrorMessage(err));
       return;
     }
-    // El flag must_change_password se apaga en el servidor (hook de Better Auth); refrescamos la sesión.
-    await fetch('/api/account/password-changed', { method: 'POST' });
     toast.success('Contraseña guardada. Ya puedes usar la plataforma.');
     router.replace('/map');
     router.refresh();

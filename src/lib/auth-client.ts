@@ -24,6 +24,8 @@ export function authErrorMessage(error: { code?: string; message?: string; statu
       return 'La contraseña debe tener al menos 10 caracteres.';
     case 'PASSWORD_TOO_LONG':
       return 'La contraseña es demasiado larga.';
+    case 'PASSWORD_UNCHANGED':
+      return 'La nueva contraseña debe ser distinta a la actual';
     case 'USER_ALREADY_EXISTS':
     case 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL':
       return 'Ya existe una cuenta con ese correo.';
