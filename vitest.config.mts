@@ -6,8 +6,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: [
-      { find: /^@\/app\/(.*)$/, replacement: path.resolve(__dirname, './app/$1') },
-      { find: /^@\/(.*)$/, replacement: path.resolve(__dirname, './src/$1') },
+      { find: /^@\/app\/(.*)$/, replacement: path.resolve(import.meta.dirname, './app/$1') },
+      { find: /^@\/(.*)$/, replacement: path.resolve(import.meta.dirname, './src/$1') },
     ],
   },
   test: {
@@ -17,6 +17,9 @@ export default defineConfig({
     hookTimeout: 60_000,
     env: {
       SKIP_ENV_VALIDATION: '1',
+      // Sin validación, env.ts no aplica sus valores por defecto: los topes de subida se fijan aquí (la CI no tiene .env).
+      MAX_ATTACHMENT_MB: '20',
+      MAX_IMPORT_FILE_MB: '10',
     },
     projects: [
       {

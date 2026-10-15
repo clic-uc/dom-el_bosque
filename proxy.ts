@@ -32,7 +32,9 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   // Los estáticos de `public/` (incluido el worker de MapLibre) no pasan por el chequeo de sesión.
+  // Las tres rutas de subida tampoco: con proxy, Next copia el cuerpo entero en memoria antes de la ruta
+  // (y corta en 10 MB). Ellas mismas exigen sesión (`withActor`) y rechazan por tamaño antes de leer.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|logo_el_bosque.png|.*\\.(?:png|jpg|jpeg|svg|ico|webp|js|mjs|css|map|woff2?)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|logo_el_bosque.png|api/attachments$|api/imports$|api/roles/import$|.*\\.(?:png|jpg|jpeg|svg|ico|webp|js|mjs|css|map|woff2?)$).*)',
   ],
 };
