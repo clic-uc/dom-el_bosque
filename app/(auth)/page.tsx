@@ -6,7 +6,7 @@ import { getOptionalActor } from '@/server/auth/session';
 
 export const metadata: Metadata = { title: 'Ingreso' };
 
-export default async function SignInPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+export default async function SignInPage({ searchParams }: { searchParams: Promise<{ next?: string | string[] }> }) {
   const actor = await getOptionalActor();
   if (actor) redirect(actor.mustChangePassword ? '/account/password' : '/map');
   const { next } = await searchParams;
@@ -21,7 +21,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
             Ingreso a plataforma georreferenciada
           </h1>
         </div>
-        <SignInForm next={next} />
+        <SignInForm next={typeof next === 'string' ? next : undefined} />
         <div className="mt-8 space-y-2 border-t pt-6 text-center text-sm text-muted-foreground">
           <p>¿No tienes cuenta? Solicítala a un administrador de la DOM.</p>
           <p>¿Olvidaste tu contraseña? Pide a un administrador que te asigne una temporal.</p>

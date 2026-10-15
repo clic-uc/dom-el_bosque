@@ -26,7 +26,9 @@ export function proxy(request: NextRequest) {
 
   const url = request.nextUrl.clone();
   url.pathname = '/';
-  url.search = pathname !== '/map' ? `?next=${encodeURIComponent(pathname + request.nextUrl.search)}` : '';
+  // `/map` a secas no necesita destino (es el de por defecto); con query sí, para no perder la capa o el registro.
+  const target = pathname + request.nextUrl.search;
+  url.search = target !== '/map' ? `?next=${encodeURIComponent(target)}` : '';
   return NextResponse.redirect(url);
 }
 

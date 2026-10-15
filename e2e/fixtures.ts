@@ -44,9 +44,17 @@ export function authFile(role: E2ERole): string {
   return path.join(AUTH_DIR, `${role}.json`);
 }
 
-/** Inicia sesión por el formulario de ingreso (§10.1). No asume a dónde redirige después. */
-export async function signIn(page: Page, email: string, password: string): Promise<void> {
-  await page.goto('/');
+/**
+ * Inicia sesión por el formulario de ingreso (§10.1). No asume a dónde redirige después.
+ * Con `{ stay: true }` usa la página ya abierta, para conservar su `?next=`.
+ */
+export async function signIn(
+  page: Page,
+  email: string,
+  password: string,
+  opts: { stay?: boolean } = {},
+): Promise<void> {
+  if (!opts.stay) await page.goto('/');
   await page.getByLabel('Correo electrónico').fill(email);
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Ingresar' }).click();
