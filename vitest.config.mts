@@ -6,8 +6,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: [
-      { find: /^@\/app\/(.*)$/, replacement: path.resolve(__dirname, './app/$1') },
-      { find: /^@\/(.*)$/, replacement: path.resolve(__dirname, './src/$1') },
+      { find: /^@\/app\/(.*)$/, replacement: path.resolve(import.meta.dirname, './app/$1') },
+      { find: /^@\/(.*)$/, replacement: path.resolve(import.meta.dirname, './src/$1') },
     ],
   },
   test: {
