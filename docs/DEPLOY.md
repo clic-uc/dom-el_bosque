@@ -104,7 +104,7 @@ El administrador creado por CLI entra con la contraseña indicada y no se le exi
 - Guardarlo fuera del repositorio, por ejemplo en `/opt/sigdom-data/roles.csv` con permisos `600` y dueño el usuario que opera el servidor.
 - Copiarlo al contenedor solo para importar y borrarlo de `/tmp` después (como en el bloque anterior).
 - Reimportar cuando el SII o la DOM entreguen un padrón actualizado: la importación actualiza coordenadas y direcciones, mueve los registros que toman la ubicación del rol y lista los roles vigentes que ya no vienen en el padrón.
-- Si una versión nueva cambia la normalización de direcciones (`normalizeAddress`), recalcular la dirección normalizada del padrón guardado una vez después de desplegar: `docker compose -f docker-compose.prod.yml exec app node scripts/renormalize-roles.js`. No necesita el CSV, es idempotente y solo escribe los roles que cambian. Sin este paso, el padrón y las direcciones nuevas se normalizan distinto y dejan de calzar.
+- Si una versión nueva cambia la normalización de direcciones (`normalizeAddress`), recalcular la dirección normalizada del padrón guardado una vez después de desplegar: `docker compose -f docker-compose.prod.yml exec app node scripts/import-roles.js --renormalize`. No necesita el CSV, es idempotente y solo escribe los roles que cambian. Sin este paso, el padrón y las direcciones nuevas se normalizan distinto y dejan de calzar.
 
 El repositorio ignora `roles.csv` y `data/roles*.csv` por si se deja una copia local en desarrollo.
 
@@ -215,8 +215,8 @@ Caddy emite un certificado local autofirmado para `localhost` (el navegador avis
 | Salud                 | `curl -fsS https://sigdomelbosque.cl/api/health`                                              |
 | Seeds / polígonos     | `… exec app node scripts/seed.js` / `… exec app node scripts/geo-import.js`                   |
 | Padrón de roles       | `… cp roles.csv app:/tmp/roles.csv && … exec app node scripts/import-roles.js /tmp/roles.csv` |
-| Recalcular direcciones del padrón | `… exec app node scripts/renormalize-roles.js` (tras un cambio de `normalizeAddress`) |
 | Primer administrador  | `… exec app node scripts/create-admin.js --email <correo> --name "<nombre>"`                  |
+| Recalcular direcciones del padrón | `… exec app node scripts/import-roles.js --renormalize` (tras un cambio de `normalizeAddress`) |
 | Respaldo              | `./scripts/backup-db.sh [etiqueta]`                                                           |
 | Restaurar             | `./scripts/restore-db.sh backups/backup_….sql.gz [backups/storage_….tar.gz]`                  |
 | Prueba de humo        | `SMOKE_EMAIL=… SMOKE_PASSWORD=… ./scripts/smoke.sh https://sigdomelbosque.cl`                 |

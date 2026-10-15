@@ -2,15 +2,28 @@
  * Importa el padrón de roles (§7.4 / §11).
  *
  *   pnpm roles:import ruta/roles.csv
+ *   pnpm roles:renormalize          (= roles:import --renormalize)
  *
  * CSV con `;` y cabeceras `roleId;DIRECCION;COMPLEMENTO;lat;lon` (~42.600 filas). No se versiona.
+ * `--renormalize` no lee ningún CSV: recalcula la dirección normalizada del padrón ya cargado. Se corre una
+ * vez después de desplegar un cambio de `normalizeAddress`, y es idempotente.
  */
 import './_env';
 import { readFile } from 'node:fs/promises';
 import { db, sqlClient } from '@/db/client';
-import { importRoleCoordinates } from '@/server/services/roles';
+import { importRoleCoordinates, renormalizeRoleAddresses } from '@/server/services/roles';
+
+async function renormalize() {
+  const started = Date.now();
+  const { total, changed } = await renormalizeRoleAddresses(db);
+  console.log(`Roles con dirección: ${total}`);
+  console.log(`Roles actualizados: ${changed}`);
+  console.log(`Listo en ${((Date.now() - started) / 1000).toFixed(1)} s`);
+  await sqlClient.end();
+}
 
 async function main() {
+  if (process.argv[2] === '--renormalize') return renormalize();
   const file = process.argv[2];
   if (!file) {
     console.error('Uso: pnpm roles:import <ruta/roles.csv>');
