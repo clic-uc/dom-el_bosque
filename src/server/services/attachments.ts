@@ -61,10 +61,18 @@ export async function addLink(db: DbOrTx, actor: Actor, input: CreateLinkAttachm
 
 export type FileInput = { name: string; type: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> };
 
+/** Tope de un adjunto y su mensaje; lo usa también la ruta para rechazar antes de leer el cuerpo. */
+export function attachmentSizeLimit(): { maxBytes: number; message: string } {
+  return {
+    maxBytes: env.MAX_ATTACHMENT_MB * 1024 * 1024,
+    message: `El archivo supera el máximo de ${env.MAX_ATTACHMENT_MB} MB`,
+  };
+}
+
 export function validateAttachmentFile(file: FileInput): void {
-  const maxBytes = env.MAX_ATTACHMENT_MB * 1024 * 1024;
+  const { maxBytes, message } = attachmentSizeLimit();
   if (file.size <= 0) throw new ValidationError('El archivo está vacío');
-  if (file.size > maxBytes) throw new ValidationError(`El archivo supera el máximo de ${env.MAX_ATTACHMENT_MB} MB`);
+  if (file.size > maxBytes) throw new ValidationError(message);
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   const extOk = (attachmentAllowedExtensions as readonly string[]).includes(ext);
   const mimeOk = (attachmentAllowedMimeTypes as readonly string[]).includes(file.type) || file.type === '';

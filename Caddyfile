@@ -6,6 +6,12 @@
 {$SITE_ADDRESS:sigdomelbosque.cl} {
 	encode gzip zstd
 
+	# Tope de cualquier petición: un adjunto de MAX_ATTACHMENT_MB (20) más el multipart. Si se sube
+	# MAX_ATTACHMENT_MB por encima de 23, subir también este valor. Responde 413 sin llegar a la app.
+	request_body {
+		max_size 25MB
+	}
+
 	reverse_proxy app:3000
 
 	header {

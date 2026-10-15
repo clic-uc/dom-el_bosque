@@ -37,20 +37,39 @@ import { GET as roleRecordsGET } from '@/app/api/roles/[roleId]/records/route';
 import { GET as opsGET, POST as opsPOST } from '@/app/api/role-operations/route';
 import { DELETE as opDELETE } from '@/app/api/role-operations/[id]/route';
 import { GET as geocodeGET } from '@/app/api/geocode/route';
+import { POST as attachmentsPOST } from '@/app/api/attachments/route';
+import { attachments } from '@/db/schema';
+import * as attachmentsService from '@/server/services/attachments';
 
 setupDbSuite();
 
 type Ctx<P extends Record<string, string>> = { params: Promise<P> };
 
-function req(path: string, init: { method?: string; body?: unknown; form?: FormData } = {}): NextRequest {
+function req(path: string, init: { method?: string; body?: unknown } = {}): NextRequest {
   const headers: Record<string, string> = {};
   let body: BodyInit | undefined;
-  if (init.form) body = init.form;
-  else if (init.body !== undefined) {
+  if (init.body !== undefined) {
     body = JSON.stringify(init.body);
     headers['content-type'] = 'application/json';
   }
   return new NextRequest(`http://localhost${path}`, { method: init.method ?? 'GET', body, headers });
+}
+
+/**
+ * Multipart con `Content-Length`, como lo envía el navegador (las rutas de subida lo exigen).
+ * `contentLength` permite declarar otro largo para probar el rechazo sin armar un cuerpo enorme.
+ */
+async function multipart(path: string, form: FormData, contentLength?: number): Promise<NextRequest> {
+  const encoded = new Response(form);
+  const body = new Uint8Array(await encoded.arrayBuffer());
+  return new NextRequest(`http://localhost${path}`, {
+    method: 'POST',
+    body,
+    headers: {
+      'content-type': encoded.headers.get('content-type')!,
+      'content-length': String(contentLength ?? body.byteLength),
+    },
+  });
 }
 
 const ctx = <P extends Record<string, string>>(params: P): Ctx<P> => ({ params: Promise.resolve(params) });
@@ -215,15 +234,41 @@ describe('admin', () => {
 
     const form = new FormData();
     form.append('file', new File([`roleId;lat;lon\n50-1;${IN_COMUNA.lat};${IN_COMUNA.lon}\n`], 'padron.csv', { type: 'text/csv' }));
-    const imp = await rolesImportPOST(req('/api/roles/import', { method: 'POST', form }), ctx({}));
+    const imp = await rolesImportPOST(await multipart('/api/roles/import', form), ctx({}));
     expect(imp.status).toBe(200);
     expect((await imp.json()) as { upsertedRoles: number }).toMatchObject({ upsertedRoles: 1 });
 
-    const noFile = await rolesImportPOST(req('/api/roles/import', { method: 'POST', form: new FormData() }), ctx({}));
+    const noFile = await rolesImportPOST(await multipart('/api/roles/import', new FormData()), ctx({}));
     expect(noFile.status).toBe(400);
 
     const delRole = await roleDELETE(req('/api/roles/50-11', { method: 'DELETE' }), ctx({ roleId: '50-11' }));
     expect(delRole.status).toBe(204);
+  });
+});
+
+describe('subida de adjuntos', () => {
+  it('rechaza por Content-Length antes de leer el cuerpo; un PDF chico entra', async () => {
+    const layer = await createLayer({ fields: [field('tipo', 'Tipo')] });
+    const rec = await insertRecord({ layerId: layer.id });
+    as(editor);
+    const form = () => {
+      const f = new FormData();
+      f.set('entityType', 'record');
+      f.set('entityId', String(rec.id));
+      f.set('title', 'Plano');
+      f.set('file', new File([Buffer.from('%PDF-1.4\n%%EOF\n')], 'plano.pdf', { type: 'application/pdf' }));
+      return f;
+    };
+
+    const big = await attachmentsPOST(await multipart('/api/attachments', form(), 25 * 1024 * 1024), ctx({}));
+    expect(big.status).toBe(400);
+    expect(await big.json()).toMatchObject({ error: { code: 'VALIDATION', message: expect.stringMatching(/máximo de 20 MB/) } });
+    expect(await db.select().from(attachments)).toHaveLength(0);
+
+    const ok = await attachmentsPOST(await multipart('/api/attachments', form()), ctx({}));
+    expect(ok.status).toBe(201);
+    const row = (await ok.json()) as { id: string };
+    await attachmentsService.deleteAttachment(db, editor, row.id);
   });
 });
 

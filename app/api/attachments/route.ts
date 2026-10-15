@@ -1,6 +1,15 @@
 import { db } from '@/db/client';
 import { ValidationError } from '@/server/errors';
-import { created, json, parseBody, parseParams, parseQuery, privateNoStore, withActor } from '@/server/http';
+import {
+  assertBodySize,
+  created,
+  json,
+  parseBody,
+  parseParams,
+  parseQuery,
+  privateNoStore,
+  withActor,
+} from '@/server/http';
 import { rateLimit, rateLimits } from '@/server/rate-limit';
 import * as attachmentsService from '@/server/services/attachments';
 import {
@@ -26,7 +35,14 @@ export const POST = withActor(
     const contentType = req.headers.get('content-type') ?? '';
 
     if (contentType.includes('multipart/form-data')) {
-      const form = await req.formData();
+      const limit = attachmentsService.attachmentSizeLimit();
+      assertBodySize(req, limit.maxBytes, limit.message);
+      let form: FormData;
+      try {
+        form = await req.formData();
+      } catch {
+        throw new ValidationError('No se pudo leer el archivo. Intenta subirlo de nuevo.');
+      }
       const fields = parseParams(
         {
           title: form.get('title'),
