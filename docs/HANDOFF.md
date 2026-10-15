@@ -22,7 +22,7 @@
 | 7 Importación en dos fases | ✅ (33 tests; 10k filas: análisis 1,7 s, confirmación 2,9 s; smoke real con worker) |
 | 8–9 Administración, auditoría, polígonos, adjuntos, mapas de calor | ✅ (16 tests de servicio + 7 UI) |
 | 10 Manual | ✅ (24 páginas MDX; 3 redactadas completas, 21 en borrador con esquema) |
-| 11 Producción | ✅ Dockerfile, compose prod + Caddy, CI, backups, DEPLOY/API.md, e2e (17 pasan, 1 fixme); pila completa verificada en local con smoke e importación. |
+| 11 Producción | ✅ Dockerfile, compose prod + Caddy, CI, backups, DEPLOY/API.md, e2e (20 pasan); pila completa verificada en local con smoke e importación. |
 | Staging (Vercel + Neon) | ✅ código y docs (`docs/DEPLOY.md` §7, `NEXT_PUBLIC_DEPLOY_MODE=staging`, 4 migraciones); falta el primer despliegue real. |
 
 Totales: 264 tests de Vitest en verde (33 archivos), 17 e2e, typecheck/lint/knip limpios, `pnpm build` OK.
@@ -30,7 +30,7 @@ Totales: 264 tests de Vitest en verde (33 archivos), 17 e2e, typecheck/lint/knip
 ## Pendientes conocidos
 
 - [x] Smoke de la pila de producción completa: `docker compose --env-file .env.production -f docker-compose.prod.yml up -d` con `SITE_ADDRESS=localhost`, seeds dentro del contenedor, `scripts/smoke.sh https://localhost` y una importación procesada por el worker del contenedor (2026-10-05).
-- [ ] e2e marcado `fixme`: "respeta ?next= tras ingresar" (el arreglo en `SignInForm` ya está; quitar el `test.fixme` y verificar).
+- [x] e2e "respeta ?next= tras ingresar": el `fixme` sobraba; el caso fallaba porque `signIn` volvía a abrir `/` y perdía `?next=`. Ahora usa `{ stay: true }` (2026-10-15).
 - [ ] Índice trigram opcional sobre `attributes::text` si la búsqueda libre con 40k registros (≈0,7 s) resulta lenta en uso real (§7.3).
 - [ ] Redacción final de las 21 páginas del manual en borrador (requiere validar ejemplos con la DOM).
 - [ ] `uniqueKeys` de las capas: el seed las deja vacías a propósito (§11); la DOM las configura desde la UI guiada por `capas/campos-unicos`.

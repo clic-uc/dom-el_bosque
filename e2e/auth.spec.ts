@@ -64,13 +64,27 @@ test.describe('ingreso', () => {
   });
 
   test('respeta ?next= tras ingresar', async ({ page }) => {
-    // SignInForm hace router.replace(next) y luego router.refresh(): el refresh vuelve a renderizar `/`,
-    // cuyo redirect de servidor a /map gana la carrera. Pendiente de corregir en src/features/auth/SignInForm.tsx.
-    test.fixme(true, 'Carrera replace/refresh en SignInForm: termina en /map en vez de ?next=');
     await page.goto('/help');
     await expect(page).toHaveURL(/\?next=%2Fhelp/);
-    await signIn(page, E2E_USERS.viewer.email, E2E_PASSWORD);
-    await expect(page).toHaveURL(/\/help/);
+    await signIn(page, E2E_USERS.viewer.email, E2E_PASSWORD, { stay: true });
+    await expect(page).toHaveURL(/\/help$/);
+  });
+
+  test('vuelve a /map si el destino no es una ruta interna', async ({ page }) => {
+    await page.goto('/?next=/%5Cevil.example');
+    await signIn(page, E2E_USERS.viewer.email, E2E_PASSWORD, { stay: true });
+    await expect(page).toHaveURL(/^http:\/\/[^/]+\/map(\?|$)/);
+  });
+
+  test('un enlace al mapa con capa vuelve a esa capa tras ingresar', async ({ page, adminRequest }) => {
+    // La última capa, para que no coincida con la que el mapa abre por defecto.
+    const layers = (await (await adminRequest.get('/api/layers')).json()) as { id: number }[];
+    const layerId = layers.at(-1)?.id;
+    expect(layerId).toBeDefined();
+    await page.goto(`/map?layer=${layerId}`);
+    await expect(page).toHaveURL(new RegExp(`\\?next=%2Fmap%3Flayer%3D${layerId}$`));
+    await signIn(page, E2E_USERS.viewer.email, E2E_PASSWORD, { stay: true });
+    await expect(page).toHaveURL(new RegExp(`/map\\?layer=${layerId}$`));
   });
 
   test('6 intentos fallidos en un minuto responden 429 (límite de Better Auth)', async ({

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { authClient, authErrorMessage } from '@/lib/auth-client';
+import { safeNextPath } from '@/shared/safe-next';
 import { signInSchema, type SignInInput } from '@/shared/schemas/users';
 
 export function SignInForm({ next }: { next?: string }) {
@@ -27,10 +28,9 @@ export function SignInForm({ next }: { next?: string }) {
       return;
     }
     const mustChange = (data?.user as { mustChangePassword?: boolean } | undefined)?.mustChangePassword;
-    const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : '/map';
     // Recarga completa a propósito: el shell del servidor debe leer la sesión nueva y respetar `?next=`
     // (con router.replace + router.refresh el redirect de "/" ganaba y siempre caía en /map).
-    window.location.assign(mustChange ? '/account/password' : safeNext);
+    window.location.assign(mustChange ? '/account/password' : safeNextPath(next));
   }
 
   return (
