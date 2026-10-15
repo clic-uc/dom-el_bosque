@@ -95,7 +95,9 @@ const COMPLEMENT_MARKERS = new Set([
   'esq',
 ]);
 
-const NUMBER_MARKERS = /\b(n[°ºo]?|nro|num|numero|#)\s*/g;
+// Solo antes de un número («N° 12», «Nro 12», «No 12», «n12»): una palabra que empieza con n («Nogales») no es marcador.
+// Los largos primero: si no, «n» se come el comienzo de «nro». `basicClean` ya quitó «°» y «º».
+const NUMBER_MARKERS = /\b(?:numero|num|nro|no|n)\s*(?=\d)|#/g;
 
 function basicClean(text: string): string {
   return stripAccents(text)

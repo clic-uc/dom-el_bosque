@@ -504,3 +504,49 @@ export async function importRoleCoordinates(
     missingFromPadron: missing.map((m) => m.id),
   };
 }
+
+// ---------- mantenimiento ----------
+
+/**
+ * Recalcula `address_norm`, `street_norm` y `house_number` de todos los roles desde `address`, con la
+ * `normalizeAddress` actual. Se corre una vez al desplegar un cambio de la normalización: si no, el padrón
+ * guardado y las direcciones nuevas se normalizan distinto y dejan de calzar. Solo escribe los que cambian.
+ */
+export async function renormalizeRoleAddresses(db: DbOrTx): Promise<{ total: number; changed: number }> {
+  const rows = await db
+    .select({
+      id: roles.id,
+      address: roles.address,
+      addressNorm: roles.addressNorm,
+      streetNorm: roles.streetNorm,
+      houseNumber: roles.houseNumber,
+    })
+    .from(roles)
+    .where(sql`${roles.address} IS NOT NULL`);
+  const changed = rows
+    .map((r) => {
+      const n = normalizeAddress(r.address);
+      return { id: r.id, addressNorm: n.addressNorm || null, streetNorm: n.streetNorm, houseNumber: n.houseNumber, before: r };
+    })
+    .filter(
+      (r) =>
+        r.addressNorm !== r.before.addressNorm ||
+        r.streetNorm !== r.before.streetNorm ||
+        r.houseNumber !== r.before.houseNumber,
+    );
+  for (let i = 0; i < changed.length; i += 1000) {
+    const values = sql.join(
+      changed
+        .slice(i, i + 1000)
+        .map((r) => sql`(${r.id}::varchar, ${r.addressNorm}::text, ${r.streetNorm}::text, ${r.houseNumber}::int)`),
+      sql`, `,
+    );
+    await db.execute(sql`
+      UPDATE roles AS r
+      SET address_norm = v.address_norm, street_norm = v.street_norm, house_number = v.house_number
+      FROM (VALUES ${values}) AS v(id, address_norm, street_norm, house_number)
+      WHERE r.id = v.id
+    `);
+  }
+  return { total: rows.length, changed: changed.length };
+}

@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outdir = path.join(root, 'dist-scripts');
 
-const scripts = ['migrate', 'seed', 'geo-import', 'import-roles', 'create-admin', 'worker', 'e2e-seed-users'];
+const scripts = ['migrate', 'seed', 'geo-import', 'import-roles', 'renormalize-roles', 'create-admin', 'worker', 'e2e-seed-users'];
 
 await rm(outdir, { recursive: true, force: true });
 

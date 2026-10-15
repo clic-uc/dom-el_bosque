@@ -26,6 +26,7 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
     "roles:import": "tsx scripts/import-roles.ts",
+    "roles:renormalize": "tsx scripts/renormalize-roles.ts",
     "geo:convert": "tsx scripts/convert-legacy-geojson.ts",
     "geo:import": "tsx scripts/geo-import.ts",
     "auth:create-admin": "tsx scripts/create-admin.ts",
