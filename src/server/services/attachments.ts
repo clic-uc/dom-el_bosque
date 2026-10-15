@@ -7,17 +7,26 @@ import { attachmentAllowedExtensions, attachmentAllowedMimeTypes } from '@/share
 import type { AttachmentEntityType, CreateLinkAttachmentInput } from '@/shared/schemas/attachments';
 import type { Actor } from '../auth/session';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
+import { matchesExtension } from '../file-signature';
 import { storage } from '../storage';
 import * as audit from './audit';
 
 export type AttachmentRow = typeof attachments.$inferSelect;
+/** Lo que sale hacia el cliente: sin la clave interna del archivo en el storage. */
+export type AttachmentOut = Omit<AttachmentRow, 'storageKey'>;
 
-export async function listAttachments(db: DbOrTx, entityType: AttachmentEntityType, entityId: string): Promise<AttachmentRow[]> {
-  return db
+export function toAttachmentDto(row: AttachmentRow): AttachmentOut {
+  const { storageKey: _storageKey, ...dto } = row;
+  return dto;
+}
+
+export async function listAttachments(db: DbOrTx, entityType: AttachmentEntityType, entityId: string): Promise<AttachmentOut[]> {
+  const rows = await db
     .select()
     .from(attachments)
     .where(and(eq(attachments.entityType, entityType), eq(attachments.entityId, entityId)))
     .orderBy(desc(attachments.createdAt));
+  return rows.map(toAttachmentDto);
 }
 
 async function assertEntityExists(db: DbOrTx, entityType: AttachmentEntityType, entityId: string): Promise<number | null> {
@@ -33,7 +42,7 @@ async function assertEntityExists(db: DbOrTx, entityType: AttachmentEntityType, 
   return null;
 }
 
-export async function addLink(db: DbOrTx, actor: Actor, input: CreateLinkAttachmentInput): Promise<AttachmentRow> {
+export async function addLink(db: DbOrTx, actor: Actor, input: CreateLinkAttachmentInput): Promise<AttachmentOut> {
   const layerId = await assertEntityExists(db, input.entityType, input.entityId);
   return db.transaction(async (tx) => {
     const [row] = await tx
@@ -55,7 +64,7 @@ export async function addLink(db: DbOrTx, actor: Actor, input: CreateLinkAttachm
       layerId,
       metadata: { entityType: input.entityType, entityId: input.entityId, kind: 'link', title: input.title },
     });
-    return row!;
+    return toAttachmentDto(row!);
   });
 }
 
@@ -73,6 +82,16 @@ export function validateAttachmentFile(file: FileInput): void {
   }
 }
 
+/** Los primeros bytes deben corresponder a la extensión: un ejecutable renombrado `.pdf` no entra. */
+function assertContentMatchesExtension(fileName: string, bytes: Uint8Array): void {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  if (!matchesExtension(ext, bytes)) {
+    throw new ValidationError(
+      `El contenido del archivo no corresponde a un ${ext.toUpperCase()}. Revisa que sea el archivo correcto o guárdalo de nuevo desde el programa que lo creó.`,
+    );
+  }
+}
+
 /** Staging: sin disco persistente no se aceptan archivos (los enlaces sí). */
 function assertFileAttachmentsEnabled(): void {
   if (!capabilities.fileAttachments) throw new ConflictError(capabilities.notices.attachments ?? 'No se pueden subir archivos.');
@@ -83,13 +102,16 @@ export async function addFile(
   actor: Actor,
   input: { entityType: AttachmentEntityType; entityId: string; title: string },
   file: FileInput,
-): Promise<AttachmentRow> {
+): Promise<AttachmentOut> {
   assertFileAttachmentsEnabled();
   validateAttachmentFile(file);
   const layerId = await assertEntityExists(db, input.entityType, input.entityId);
+  const content = Buffer.from(await file.arrayBuffer());
+  // antes de guardar: un archivo rechazado no llega al storage
+  assertContentMatchesExtension(file.name, content);
   const id = crypto.randomUUID();
   const storageKey = `attachments/${id}`;
-  await storage.put(storageKey, Buffer.from(await file.arrayBuffer()));
+  await storage.put(storageKey, content);
   try {
     return await db.transaction(async (tx) => {
       const [row] = await tx
@@ -115,7 +137,7 @@ export async function addFile(
         layerId,
         metadata: { entityType: input.entityType, entityId: input.entityId, kind: 'file', title: input.title, fileName: file.name },
       });
-      return row!;
+      return toAttachmentDto(row!);
     });
   } catch (err) {
     await storage.delete(storageKey);

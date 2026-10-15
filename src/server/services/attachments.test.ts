@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { eq, sql } from 'drizzle-orm';
@@ -38,8 +38,20 @@ async function createPolygon(): Promise<number> {
   return row!.id;
 }
 
-function makeFile(name: string, type: string, bytes: number): File {
-  return new File([new Uint8Array(bytes).fill(65)], name, { type });
+/** Cabecera real de cada tipo: el servicio comprueba los primeros bytes según la extensión. */
+const HEADERS: Record<string, number[]> = {
+  pdf: [...Buffer.from('%PDF-1.7\n')],
+  jpg: [0xff, 0xd8, 0xff, 0xe0],
+  dwg: [...Buffer.from('AC1032')],
+  docx: [0x50, 0x4b, 0x03, 0x04],
+  dxf: [...Buffer.from('  0\r\nSECTION\r\n')],
+};
+
+/** Archivo de `bytes` bytes con la cabecera de su extensión y el resto relleno con «A». */
+function makeFile(name: string, type: string, bytes: number, header?: number[]): File {
+  const data = new Uint8Array(bytes).fill(65);
+  data.set((header ?? HEADERS[name.split('.').pop()!] ?? []).slice(0, bytes));
+  return new File([data], name, { type });
 }
 
 async function readStream(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
@@ -118,7 +130,9 @@ describe('attachments.service', () => {
     expect(row.fileName).toBe('reglamento ñ.pdf');
     expect(row.mimeType).toBe('application/pdf');
     expect(row.sizeBytes).toBe(2048);
-    expect(row.storageKey).toBe(`attachments/${row.id}`);
+    expect(row).not.toHaveProperty('storageKey');
+    const [stored] = await db.select().from(attachments).where(eq(attachments.id, row.id));
+    expect(stored!.storageKey).toBe(`attachments/${row.id}`);
     const filePath = path.join(storage.root, 'attachments', row.id);
     expect(existsSync(filePath)).toBe(true);
 
@@ -130,7 +144,7 @@ describe('attachments.service', () => {
     expect(found.id).toBe(row.id);
     const content = await readStream(stream);
     expect(content.length).toBe(2048);
-    expect(content[0]).toBe(65);
+    expect(content.subarray(0, 5).toString()).toBe('%PDF-');
 
     await attachmentsService.deleteAttachment(db, actor, row.id);
     expect(existsSync(filePath)).toBe(false);
@@ -146,6 +160,35 @@ describe('attachments.service', () => {
     expect(list.map((a) => a.id)).toEqual([dwg.id]);
   });
 
+  it('archivos: rechaza el contenido que no corresponde a la extensión, sin escribir en el storage', async () => {
+    const recordId = await createRecord();
+    const input = { entityType: 'record' as const, entityId: String(recordId), title: 'Documento' };
+    const exe = [...Buffer.from('MZ'), 0x90, 0x00];
+    const dir = path.join(storage.root, 'attachments');
+    const stored = () => (existsSync(dir) ? readdirSync(dir).length : 0);
+    const before = stored();
+
+    await expect(
+      attachmentsService.addFile(db, actor, input, makeFile('informe.pdf', 'application/pdf', 64, exe)),
+    ).rejects.toThrow(/no corresponde a un PDF/);
+    await expect(
+      attachmentsService.addFile(db, actor, input, makeFile('planilla.xls', 'application/vnd.ms-excel', 64, [...Buffer.from('<html>')])),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(await db.select().from(attachments)).toHaveLength(0);
+    expect(stored()).toBe(before);
+
+    const docx = await attachmentsService.addFile(
+      db,
+      actor,
+      input,
+      makeFile('acta.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 64),
+    );
+    const dxf = await attachmentsService.addFile(db, actor, input, makeFile('plano.dxf', '', 64));
+    const list = await attachmentsService.listAttachments(db, 'record', String(recordId));
+    expect(list.map((a) => a.id).sort()).toEqual([docx.id, dxf.id].sort());
+    for (const a of list) expect(a).not.toHaveProperty('storageKey');
+  });
+
   it('deleteForEntity borra las filas y devuelve las claves para purgar el storage', async () => {
     const recordId = await createRecord();
     const input = { entityType: 'record' as const, entityId: String(recordId), title: 'Foto' };
@@ -153,7 +196,7 @@ describe('attachments.service', () => {
     await attachmentsService.addLink(db, actor, { ...input, title: 'Enlace', url: 'https://x.cl' });
 
     const keys = await attachmentsService.deleteForEntity(db, 'record', [String(recordId)]);
-    expect(keys).toEqual([f.storageKey]);
+    expect(keys).toEqual([`attachments/${f.id}`]);
     await attachmentsService.purgeStorageKeys(keys);
     expect(existsSync(path.join(storage.root, 'attachments', f.id))).toBe(false);
     expect(await attachmentsService.listAttachments(db, 'record', String(recordId))).toEqual([]);

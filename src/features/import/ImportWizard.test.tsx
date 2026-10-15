@@ -125,7 +125,6 @@ const status: ImportStatusFull = {
   userEmail: 'u@t',
   fileName: 'permisos.xlsx',
   fileType: 'xlsx',
-  fileKey: null,
   sheetName: 'Datos',
   headerRow: 3,
   delimiter: null,
