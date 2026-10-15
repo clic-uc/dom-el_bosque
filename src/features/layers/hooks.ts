@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { api, errorMessage } from '@/lib/api';
+import { api, errorMessage, isReasonRequired } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 import type { FieldType } from '@/shared/constants';
 import type { CreateLayerInput, UpdateLayerInput } from '@/shared/schemas/layers';
@@ -40,20 +40,28 @@ export function useUpdateLayer() {
       await qc.invalidateQueries({ queryKey: queryKeys.layers.all });
       toast.success(`Cambios guardados en «${layer.name}»`);
     },
-    onError: (err) => toast.error(errorMessage(err, 'No se pudieron guardar los cambios. Intenta de nuevo.')),
+    // Si el servidor pide el motivo, el formulario lo pide y reenvía: no es un error que mostrar.
+    onError: (err) => {
+      if (isReasonRequired(err)) return;
+      toast.error(errorMessage(err, 'No se pudieron guardar los cambios. Intenta de nuevo.'));
+    },
   });
 }
 
 export function useDeleteLayer() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => api<void>(`/api/layers/${id}`, { method: 'DELETE' }),
+    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
+      api<void>(`/api/layers/${id}`, { method: 'DELETE', json: reason ? { reason } : {} }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: queryKeys.layers.all });
       await qc.invalidateQueries({ queryKey: queryKeys.records.all });
       toast.success('Capa eliminada');
     },
-    onError: (err) => toast.error(errorMessage(err, 'No se pudo eliminar la capa. Intenta de nuevo.')),
+    onError: (err) => {
+      if (isReasonRequired(err)) return;
+      toast.error(errorMessage(err, 'No se pudo eliminar la capa. Intenta de nuevo.'));
+    },
   });
 }
 
@@ -135,6 +143,16 @@ export function useRevertImport(layerId: number) {
         `Importación revertida: se eliminaron ${res.deletedRecords} registros y se restauraron ${res.restoredRecords}`,
       );
     },
-    onError: (err) => toast.error(errorMessage(err, 'No se pudo revertir la importación.')),
+    onError: (err) => {
+      // Aquí no hay dónde pedir el motivo: se indica el lugar que sí lo pide.
+      if (isReasonRequired(err)) {
+        const n = err.details.count;
+        toast.error(
+          `Revertir esta importación quita el número asignado por la plataforma a ${n} ${n === 1 ? 'registro' : 'registros'}. Para indicar el motivo, reviértela desde Administración, en la pestaña de importaciones.`,
+        );
+        return;
+      }
+      toast.error(errorMessage(err, 'No se pudo revertir la importación.'));
+    },
   });
 }

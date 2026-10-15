@@ -25,6 +25,7 @@ const layer: LayerWithCount = {
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   recordCount: 10,
+  numberedRecordCount: 0,
 };
 
 const options: FilterOptions = { estado: ['', 'Aprobado', 'Rechazado'], direccion: 'text' };

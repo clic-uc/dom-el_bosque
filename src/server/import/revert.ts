@@ -4,9 +4,11 @@ import { importRemovals, importRows, imports, records } from '@/db/schema';
 import type { ImportRevertResult, RecordDto } from '@/shared/types';
 import type { Actor } from '../auth/session';
 import { ConflictError, ForbiddenError } from '../errors';
+import { requireLayer } from '../services/_shared';
 import * as attachmentsService from '../services/attachments';
 import * as audit from '../services/audit';
 import { invalidateFilterOptions } from '../services/filters';
+import { assertCanDropNumbers, numberedRefs, plural, type NumberedRecordRef } from '../services/numbered';
 import { ensureRoles } from '../services/roles';
 import { requireImport } from './service';
 
@@ -21,6 +23,35 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 /**
+ * Registros que perderían su número al revertir (§8.8): los creados por la importación que hoy tienen número,
+ * y los actualizados que hoy lo tienen y en el snapshot no. Se mira `number_assigned_at`, como `deleteRecord`.
+ */
+async function numberLosses(
+  db: DbOrTx,
+  created: number[],
+  updated: { id: number; snapshot: RecordDto }[],
+  lock: boolean,
+): Promise<{ id: number; attributes: Record<string, unknown> }[]> {
+  const unnumberedBefore = new Set(updated.filter((u) => !u.snapshot.numberAssignedAt).map((u) => u.id));
+  const candidates = [...created, ...unnumberedBefore];
+  const out: { id: number; attributes: Record<string, unknown> }[] = [];
+  for (const part of chunk(candidates, 5000)) {
+    const q = db
+      .select({ id: records.id, attributes: records.attributes })
+      .from(records)
+      .where(and(inArray(records.id, part), isNotNull(records.numberAssignedAt)))
+      .orderBy(records.id);
+    out.push(...(lock ? await q.for('update') : await q));
+  }
+  return out;
+}
+
+const lossMessages = (n: number) => ({
+  forbidden: `Revertir esta importación quitaría el número asignado por la plataforma a ${plural(n, 'registro', 'registros')}. Solo un administrador puede hacerlo, desde Administración, en la pestaña de importaciones.`,
+  reasonRequired: `Revertir esta importación quita el número asignado por la plataforma a ${plural(n, 'registro', 'registros')}. Indica el motivo.`,
+});
+
+/**
  * `POST /api/imports/:id/revert` (§8.5 "Después"): borra los creados, restaura los actualizados desde
  * `previousSnapshot` y reinserta los borrados por reemplazo completo con su id original. Editor: solo propias.
  */
@@ -28,7 +59,7 @@ export async function revertImport(
   db: DbOrTx,
   actor: Actor,
   id: string,
-  input: { force: boolean },
+  input: { force: boolean; reason?: string },
 ): Promise<ImportRevertResult> {
   const imp = await requireImport(db, id);
   if (actor.role !== 'admin' && imp.userId !== actor.userId) {
@@ -66,6 +97,9 @@ export async function revertImport(
       ),
     );
 
+  const losses = await numberLosses(db, created, updated, false);
+  assertCanDropNumbers(actor, losses.length, input.reason, lossMessages(losses.length));
+
   const touched = [...created, ...updated.map((u) => u.id)];
   if (!input.force && touched.length) {
     const modified: number[] = [];
@@ -86,8 +120,15 @@ export async function revertImport(
 
   const result: ImportRevertResult = { deletedRecords: 0, restoredRecords: 0, reinsertedRecords: 0 };
   const storageKeys: string[] = [];
+  let numberedRecords: NumberedRecordRef[] = [];
 
   await db.transaction(async (tx) => {
+    // De nuevo, con lock: un número asignado después de la primera comprobación no se pierde sin motivo.
+    const lockedLosses = await numberLosses(tx, created, updated, true);
+    assertCanDropNumbers(actor, lockedLosses.length, input.reason, lossMessages(lockedLosses.length));
+    if (lockedLosses.length)
+      numberedRecords = numberedRefs(await requireLayer(tx, imp.layerId), lockedLosses);
+
     // 1. borrar los creados (y sus adjuntos)
     for (const part of chunk(created, 5000)) {
       storageKeys.push(...(await attachmentsService.deleteForEntity(tx, 'record', part.map(String))));
@@ -167,7 +208,12 @@ export async function revertImport(
       entityType: 'IMPORT',
       entityId: id,
       layerId: imp.layerId,
-      metadata: { fileName: imp.fileName, ...result, forced: input.force },
+      metadata: {
+        fileName: imp.fileName,
+        ...result,
+        forced: input.force,
+        ...(numberedRecords.length ? { reason: input.reason, numberedRecords } : {}),
+      },
     });
   });
 

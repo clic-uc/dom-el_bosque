@@ -308,7 +308,8 @@ export function useAssignNumber() {
     mutationFn: ({ id }: { id: number; layerId: number }) => api<{ number: number }>(`/api/records/${id}/number`, { method: 'POST' }),
     onSuccess: async (res, vars) => {
       toast.success(`Número ${new Intl.NumberFormat('es-CL').format(res.number)} asignado`);
-      await Promise.all([inv.record(vars.id), inv.layerData(vars.layerId), inv.counters(vars.layerId)]);
+      // La lista de capas trae `numberedRecordCount`.
+      await Promise.all([inv.record(vars.id), inv.layerData(vars.layerId), inv.counters(vars.layerId), inv.layersList()]);
     },
     onError: toastError,
   });
@@ -321,7 +322,7 @@ export function useCorrectNumber() {
       api<{ number: number | null }>(`/api/records/${id}/number`, { method: 'PUT', json: { value, reason } }),
     onSuccess: async (_res, vars) => {
       toast.success('Número corregido');
-      await Promise.all([inv.record(vars.id), inv.layerData(vars.layerId), inv.counters(vars.layerId)]);
+      await Promise.all([inv.record(vars.id), inv.layerData(vars.layerId), inv.counters(vars.layerId), inv.layersList()]);
     },
     onError: toastError,
   });
