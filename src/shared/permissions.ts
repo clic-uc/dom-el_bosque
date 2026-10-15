@@ -1,14 +1,17 @@
 import { createAccessControl } from 'better-auth/plugins/access';
-import { adminAc, defaultStatements } from 'better-auth/plugins/admin/access';
+import { defaultStatements } from 'better-auth/plugins/admin/access';
 import type { UserRole } from './constants';
 
-/** Control de acceso de Better Auth (§6.1). Solo el admin tiene permisos sobre usuarios/sesiones. */
+/**
+ * Control de acceso de Better Auth (§6.1). El admin recibe solo los permisos que usa
+ * `src/server/services/users.ts`: cambiar rol y contraseña, cerrar sesiones y eliminar.
+ */
 const statement = { ...defaultStatements } as const;
 
 export const ac = createAccessControl(statement);
 
 export const roles = {
-  admin: ac.newRole({ ...adminAc.statements }),
+  admin: ac.newRole({ user: ['set-role', 'set-password', 'delete'], session: ['revoke'] }),
   editor: ac.newRole({ user: [], session: [] }),
   viewer: ac.newRole({ user: [], session: [] }),
 };
