@@ -37,8 +37,6 @@ Registro de toda desviación o precisión respecto de `PROMPT.md`. Formato: fech
 
 **2026-10-05 — Grupos de rutas para el cambio obligatorio de contraseña.** `app/(app)/layout.tsx` exige sesión; `app/(app)/(main)/layout.tsx` además redirige a `/account/password` mientras `must_change_password` sea `true`. Así la página de cambio de contraseña queda dentro del shell autenticado sin excepciones por ruta.
 
-**2026-10-05 — Endpoint `POST /api/account/password-changed`.** Better Auth no expone un hook simple sobre `changePassword` para apagar `must_change_password`; tras el cambio exitoso el cliente llama a este endpoint (único que acepta sesión con contraseña temporal) y luego el shell revalida. Es idempotente e inocuo si se llama de más.
-
 **2026-10-05 — `getFeatures` siempre incluye los 3 primeros campos.** El prompt lo plantea solo "para capas grandes"; incluirlos siempre simplifica el hover y el tamaño extra es marginal. El detalle completo sigue cargándose por id.
 
 **2026-10-05 — Comparación de identidades en SQL aproximada, verificación en JS.** La normalización de §8.4 (acentos, espacios, minúsculas) se replica en SQL con `translate/regexp_replace/lower/trim` para preseleccionar candidatos y se verifica en JS con `normalizeText` (que usa NFD). Para la importación masiva se carga un índice en memoria de identidades de la capa (40k filas caben sin problema).
@@ -166,3 +164,5 @@ Implementa `docs/STAGING.md`; la parte operativa está en `docs/DEPLOY.md` §7. 
 **2026-10-12 — Aviso de staging sin romper vistas de pantalla completa.** El shell autenticado publica el alto del aviso en `--app-banner-h`; las utilidades `h-app` / `min-h-app` (`globals.css`) descuentan ese alto y equivalen a `100dvh` en producción. La página del manual `ambiente-de-pruebas` solo aparece en el índice en staging (en producción sigue accesible por URL).
 
 **2026-10-12 — Conexiones en staging.** Pool de la app con `max: 2` (cada instancia serverless abre el suyo contra el pooler de Neon). Los scripts usan `DATABASE_URL_DIRECT` si existe (`scripts/_env.ts`): migraciones y DDL no pasan por PgBouncer en modo transacción. `.gitignore` ahora versiona `.env.*.example` (`.env.production.example` estaba ignorado por error) y se agrega `.env.staging.example`.
+
+**2026-10-15 — El cambio de contraseña se resuelve en el servidor.** Reemplaza al endpoint `POST /api/account/password-changed` (2026-10-05), que se eliminó. Dos hooks de Better Auth sobre `/change-password` (`src/server/auth/index.ts`) hacen el trabajo. El `before` rechaza una contraseña nueva igual a la actual (`PASSWORD_UNCHANGED`) y fuerza `revokeOtherSessions: true`. El `after`, solo si el cambio resultó, apaga `must_change_password` de ese usuario. La marca ya no depende de que el cliente haga una segunda llamada, y siempre se cierran las otras sesiones. Si falla la escritura de la marca, se registra y la respuesta no cambia: la contraseña y la sesión nueva ya quedaron guardadas.
