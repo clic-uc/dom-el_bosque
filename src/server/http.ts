@@ -6,6 +6,7 @@ import {
   AppError,
   ForbiddenError,
   statusFromText,
+  ValidationError,
   zodToValidationError,
   type ApiErrorBody,
   type ApiErrorCode,
@@ -102,6 +103,25 @@ export function withPublic<P extends Record<string, string> = Record<string, str
       return toApiError(err);
     }
   };
+}
+
+/** Margen sobre el tamaño del archivo para el resto del multipart (campos y separadores). */
+const MULTIPART_MARGIN_BYTES = 1024 * 1024;
+
+/**
+ * Rechaza una subida por su `Content-Length`, antes de leer el cuerpo: un archivo enorme no llega a memoria.
+ * Sin `Content-Length` también se rechaza (el navegador siempre lo envía en un formulario con archivo).
+ * Las rutas que la usan quedan fuera del `matcher` de `proxy.ts`: si no, Next copia el cuerpo entero antes.
+ */
+export function assertBodySize(req: Request, maxBytes: number, message: string): void {
+  // Un tope mal configurado (p. ej. NaN si falta la variable y se omitió la validación de env) no deja pasar nada.
+  if (!Number.isFinite(maxBytes) || maxBytes <= 0) throw new Error(`Tope de subida inválido: ${maxBytes}`);
+  const header = req.headers.get('content-length');
+  const length = header === null ? NaN : Number(header);
+  if (!Number.isFinite(length) || length < 0) {
+    throw new ValidationError('No se pudo leer el tamaño del archivo. Vuelve a subirlo desde la plataforma.');
+  }
+  if (length > maxBytes + MULTIPART_MARGIN_BYTES) throw new ValidationError(message);
 }
 
 export async function parseBody<T>(req: NextRequest, schema: ZodType<T>): Promise<T> {

@@ -112,9 +112,13 @@ function fileTypeOf(name: string): 'csv' | 'xlsx' {
   throw new ValidationError('Solo se aceptan archivos .csv o .xlsx (Excel).');
 }
 
-/** Tope de MB efectivo: el del despliegue (staging) o el configurado en el servidor. */
-function importMaxMb(): number {
-  return capabilities.importMaxMb ?? env.MAX_IMPORT_FILE_MB;
+/** Tope efectivo, el del despliegue (staging) o el configurado en el servidor, y su mensaje. */
+export function importSizeLimit(): { maxBytes: number; message: string } {
+  const maxMb = capabilities.importMaxMb ?? env.MAX_IMPORT_FILE_MB;
+  return {
+    maxBytes: maxMb * 1024 * 1024,
+    message: `El archivo pesa más de ${maxMb} MB. Divide la planilla en partes más pequeñas.`,
+  };
 }
 
 /** Staging: rechaza planillas con más filas que el máximo del ambiente (se aplica al subir y al cambiar de hoja). */
@@ -140,13 +144,9 @@ export async function uploadImport(
 ): Promise<ImportSource> {
   const layer = await requireLayer(db, layerId);
   const fileType = fileTypeOf(file.name);
-  const maxMb = importMaxMb();
+  const limit = importSizeLimit();
   if (file.size <= 0) throw new ValidationError('El archivo está vacío.');
-  if (file.size > maxMb * 1024 * 1024) {
-    throw new ValidationError(
-      `El archivo pesa más de ${maxMb} MB. Divide la planilla en partes más pequeñas.`,
-    );
-  }
+  if (file.size > limit.maxBytes) throw new ValidationError(limit.message);
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const table = await parseImportBuffer(

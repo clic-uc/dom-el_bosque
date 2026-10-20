@@ -1,8 +1,8 @@
 import { db } from '@/db/client';
 import { ValidationError, zodToValidationError } from '@/server/errors';
-import { created, json, parseQuery, privateNoStore, withActor } from '@/server/http';
+import { assertBodySize, created, json, parseQuery, privateNoStore, withActor } from '@/server/http';
 import { listImports } from '@/server/import/service';
-import { uploadImport } from '@/server/import/upload';
+import { importSizeLimit, uploadImport } from '@/server/import/upload';
 import { rateLimit, rateLimits } from '@/server/rate-limit';
 import { importUploadFieldsSchema, importsQuerySchema } from '@/shared/schemas/imports';
 
@@ -21,6 +21,8 @@ export const POST = withActor(
       rateLimits.importUpload,
       'Subiste muchos archivos seguidos. Espera un minuto e intenta de nuevo.',
     );
+    const limit = importSizeLimit();
+    assertBodySize(req, limit.maxBytes, limit.message);
     let form: FormData;
     try {
       form = await req.formData();
