@@ -10,7 +10,7 @@ Contratos de los Route Handlers de `app/api/**` (PROMPT.md §9). La API es _same
 
 - Sin sesión, `proxy.ts` responde `401` con el cuerpo de error uniforme en `/api/*` (salvo `/api/auth/*` y `/api/health`). La validación real de la sesión ocurre en cada handler (`getActor()`), nunca solo por la cookie.
 - Roles: `viewer` ⊂ `editor` ⊂ `admin`. En la tabla, "viewer" significa cualquier usuario autenticado (incluido "Sin rol", que se trata como visor); "editor" incluye a admin. Rol insuficiente → `403 FORBIDDEN`.
-- Usuario con contraseña temporal (`must_change_password`): toda la API responde `403 PASSWORD_CHANGE_REQUIRED` salvo `/api/auth/*` y `POST /api/account/password-changed`.
+- Usuario con contraseña temporal (`must_change_password`): toda la API responde `403 PASSWORD_CHANGE_REQUIRED` salvo `/api/auth/*`. Al cambiar la contraseña, el servidor apaga la marca.
 - "(propia)": un editor solo opera sobre importaciones que creó; un admin sobre todas.
 
 ### Formato de error
@@ -78,16 +78,10 @@ Las respuestas son JSON: las fechas viajan como texto ISO 8601 (`Jsonified<T>`),
 
 ## Público
 
-| Método y ruta            | Entrada                                                                                                                                                                                                                    | Respuesta                                                                                                            |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `GET`/`POST /api/auth/*` | Endpoints de Better Auth: `sign-in/email`, `sign-out`, `get-session`, `change-password`, `update-user`, y los del plugin `admin` que usa la UI. `sign-up/email` está deshabilitado (`disableSignUp`) y responde error 4xx. | Según Better Auth                                                                                                    |
-| `GET /api/health`        | —                                                                                                                                                                                                                          | `{ status: 'ok', db: 'ok' }` (200) o `{ status: 'degraded', db: 'error' }` (503). Lo usa el `HEALTHCHECK` de Docker. |
-
-## Cuenta
-
-| Método y ruta                        | Rol                                        | Entrada | Respuesta                                                                                    |
-| ------------------------------------ | ------------------------------------------ | ------- | -------------------------------------------------------------------------------------------- |
-| `POST /api/account/password-changed` | viewer (permitido con contraseña temporal) | —       | `{ ok: true }`. Apaga `must_change_password` tras un `change-password` exitoso. Idempotente. |
+| Método y ruta            | Entrada                                                                                                                                                                                                                                                                                                                        | Respuesta                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `GET`/`POST /api/auth/*` | Endpoints de Better Auth: `sign-in/email`, `sign-out`, `get-session`, `change-password` (siempre cierra las otras sesiones y rechaza repetir la contraseña actual con `PASSWORD_UNCHANGED`), `update-user`, y los del plugin `admin` que usa la UI. `sign-up/email` está deshabilitado (`disableSignUp`) y responde error 4xx. | Según Better Auth                                                                                                    |
+| `GET /api/health`        | —                                                                                                                                                                                                                                                                                                                              | `{ status: 'ok', db: 'ok' }` (200) o `{ status: 'degraded', db: 'error' }` (503). Lo usa el `HEALTHCHECK` de Docker. |
 
 ## Capas
 

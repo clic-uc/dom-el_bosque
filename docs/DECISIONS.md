@@ -37,7 +37,7 @@ Registro de toda desviación o precisión respecto de `PROMPT.md`. Formato: fech
 
 **2026-10-05 — Grupos de rutas para el cambio obligatorio de contraseña.** `app/(app)/layout.tsx` exige sesión; `app/(app)/(main)/layout.tsx` además redirige a `/account/password` mientras `must_change_password` sea `true`. Así la página de cambio de contraseña queda dentro del shell autenticado sin excepciones por ruta.
 
-**2026-10-05 — Endpoint `POST /api/account/password-changed`.** Better Auth no expone un hook simple sobre `changePassword` para apagar `must_change_password`; tras el cambio exitoso el cliente llama a este endpoint (único que acepta sesión con contraseña temporal) y luego el shell revalida. Es idempotente e inocuo si se llama de más.
+**2026-10-15 — El cambio de contraseña se resuelve en el servidor.** Reemplaza al endpoint `POST /api/account/password-changed` (2026-10-05), que se eliminó. Dos hooks de Better Auth sobre `/change-password` (`src/server/auth/index.ts`) hacen el trabajo. El `before` rechaza una contraseña nueva igual a la actual (`PASSWORD_UNCHANGED`) y fuerza `revokeOtherSessions: true`. El `after`, solo si el cambio resultó, apaga `must_change_password` de ese usuario. La marca ya no depende de que el cliente haga una segunda llamada, y siempre se cierran las otras sesiones. Si falla la escritura de la marca, se registra y la respuesta no cambia: la contraseña y la sesión nueva ya quedaron guardadas.
 
 **2026-10-05 — `getFeatures` siempre incluye los 3 primeros campos.** El prompt lo plantea solo "para capas grandes"; incluirlos siempre simplifica el hover y el tamaño extra es marginal. El detalle completo sigue cargándose por id.
 
