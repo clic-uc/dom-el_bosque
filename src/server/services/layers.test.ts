@@ -8,10 +8,12 @@ import { db, sqlClient } from '@/db/client';
 import { auditLogs, layers, records, roles } from '@/db/schema';
 import type { Actor } from '@/server/auth/session';
 import { ValidationError } from '@/server/errors';
-import { createLayerSchema, type CreateLayerInput } from '@/shared/schemas/layers';
+import { createLayerSchema, type CreateLayerInput, type LayerField } from '@/shared/schemas/layers';
+import { raceWithOpenTransaction } from './__tests__/helpers';
 import * as svc from './layers';
 
 const actor: Actor = { userId: 't', email: 't@t', name: 'T', role: 'admin', rawRole: 'admin', mustChangePassword: false };
+const editorActor: Actor = { ...actor, userId: 'e', role: 'editor', rawRole: 'editor' };
 
 function fieldsOf(layer: { fields: { key: string }[] }) {
   return layer.fields.map((f) => f.key);
@@ -32,10 +34,31 @@ async function makeLayer(overrides: Partial<CreateLayerInput> = {}) {
   return svc.createLayer(db, actor, input);
 }
 
-async function insertRecord(layerId: number, attributes: Record<string, unknown>, roleId: string | null = null) {
-  const [row] = await db.insert(records).values({ layerId, roleId, attributes }).returning();
+async function insertRecord(
+  layerId: number,
+  attributes: Record<string, unknown>,
+  roleId: string | null = null,
+  numberAssignedAt: Date | null = null,
+) {
+  const [row] = await db.insert(records).values({ layerId, roleId, attributes, numberAssignedAt }).returning();
   return row!;
 }
+
+/** Capa con correlativo `n_permiso` y un registro con número asignado por la plataforma. */
+async function makeNumberedLayer() {
+  const layer = await makeLayer({
+    fields: svc.assignFieldKeys([
+      { label: 'N° Permiso', type: 'autonumber' },
+      { label: 'Dirección' },
+      { label: 'Año', type: 'number' },
+    ]),
+  });
+  const numbered = await insertRecord(layer.id, { n_permiso: 7, direccion: 'Calle 1' }, null, new Date());
+  await insertRecord(layer.id, { direccion: 'Calle 2' });
+  return { layer, numbered };
+}
+
+const withoutField = (layer: { fields: LayerField[] }, key: string) => layer.fields.filter((f) => f.key !== key);
 
 async function attrsOf(layerId: number) {
   const rows = await db
@@ -273,6 +296,116 @@ describe('updateLayer: migración de campos (§7.2)', () => {
   });
 });
 
+describe('updateLayer: correlativo con números asignados (§8.8)', () => {
+  it('un editor no puede eliminar el campo correlativo ni cambiarle el tipo', async () => {
+    const { layer, numbered } = await makeNumberedLayer();
+
+    await expect(
+      svc.updateLayer(db, editorActor, layer.id, {
+        fields: withoutField(layer, 'n_permiso'),
+        renames: [],
+        convertTypes: [],
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    const asText = layer.fields.map((f) => (f.key === 'n_permiso' ? { ...f, type: 'string' as const } : f));
+    await expect(
+      svc.updateLayer(db, editorActor, layer.id, { fields: asText, renames: [], convertTypes: ['n_permiso'] }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+    const [row] = await db.select().from(records).where(eq(records.id, numbered.id));
+    expect(row!.attributes.n_permiso).toBe(7);
+  });
+
+  it('en un correlativo anual, un editor no puede eliminar el campo de año', async () => {
+    const layer = await makeLayer({
+      fields: [
+        { key: 'n_permiso', label: 'N° Permiso', type: 'autonumber', required: false, options: { reset: 'yearly', yearFieldKey: 'anio' } },
+        { key: 'anio', label: 'Año', type: 'number', required: false, options: {} },
+      ],
+    });
+    await insertRecord(layer.id, { n_permiso: 3, anio: 2026 }, null, new Date());
+    // Para eliminar el año, el correlativo tiene que pasar a no reiniciarse: igual se pierde el año de cada número.
+    const fields = [{ ...layer.fields[0]!, options: { reset: 'never' } }];
+    await expect(
+      svc.updateLayer(db, editorActor, layer.id, { fields, renames: [], convertTypes: [] }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
+  it('un administrador sin motivo recibe reasonRequired; con motivo, los números quedan en el registro de auditoría', async () => {
+    const { layer, numbered } = await makeNumberedLayer();
+    const patch = { fields: withoutField(layer, 'n_permiso'), renames: [], convertTypes: [] };
+
+    await expect(svc.updateLayer(db, actor, layer.id, patch)).rejects.toMatchObject({
+      code: 'VALIDATION',
+      details: { reasonRequired: true, count: 1 },
+    });
+
+    await svc.updateLayer(db, actor, layer.id, { ...patch, reason: 'Se cambia la numeración' });
+    const [row] = await db.select().from(records).where(eq(records.id, numbered.id));
+    expect(row!.attributes).not.toHaveProperty('n_permiso');
+    expect(row!.numberAssignedAt).not.toBeNull();
+    const [log] = await db.select().from(auditLogs).where(eq(auditLogs.action, 'UPDATE'));
+    expect(log!.metadata).toMatchObject({
+      reason: 'Se cambia la numeración',
+      numberedRecords: [{ id: numbered.id, number: 7 }],
+    });
+  });
+
+  it('renombrar la clave del correlativo no pide motivo, y sin registros numerados un editor lo elimina', async () => {
+    const { layer, numbered } = await makeNumberedLayer();
+    const fields = layer.fields.map((f) => (f.key === 'n_permiso' ? { ...f, key: 'permiso' } : f));
+    await svc.updateLayer(db, editorActor, layer.id, {
+      fields,
+      renames: [{ from: 'n_permiso', to: 'permiso' }],
+      convertTypes: [],
+    });
+    const [row] = await db.select().from(records).where(eq(records.id, numbered.id));
+    expect(row!.attributes.permiso).toBe(7);
+
+    const plain = await makeLayer({
+      name: 'Sin números',
+      fields: svc.assignFieldKeys([{ label: 'N° Permiso', type: 'autonumber' }, { label: 'Dirección' }]),
+    });
+    await insertRecord(plain.id, { direccion: 'Calle 3' });
+    const after = await svc.updateLayer(db, editorActor, plain.id, {
+      fields: withoutField(plain, 'n_permiso'),
+      renames: [],
+      convertTypes: [],
+    });
+    expect(fieldsOf(after)).toEqual(['direccion']);
+  });
+
+  it('un número que se está asignando mientras se quita el correlativo entra en la cuenta y no se borra', async () => {
+    const layer = await makeLayer({
+      fields: svc.assignFieldKeys([{ label: 'N° Permiso', type: 'autonumber' }, { label: 'Dirección' }]),
+    });
+    const rec = await insertRecord(layer.id, { direccion: 'Calle 1' });
+
+    // Otra transacción le asigna número y aún no confirma: el editor tiene que esperarla y ver ese número.
+    const { waited, result } = await raceWithOpenTransaction(
+      (conn) =>
+        conn`UPDATE records SET attributes = attributes || '{"n_permiso": 1}'::jsonb, number_assigned_at = now() WHERE id = ${rec.id}`,
+      () =>
+        svc.updateLayer(db, editorActor, layer.id, {
+          fields: withoutField(layer, 'n_permiso'),
+          renames: [],
+          convertTypes: [],
+        }),
+    );
+    expect(waited).toBe(true);
+    expect(result).toMatchObject({ ok: false, error: { code: 'FORBIDDEN', details: { count: 1 } } });
+    const [row] = await db.select().from(records).where(eq(records.id, rec.id));
+    expect(row!.attributes.n_permiso).toBe(1);
+    expect(fieldsOf((await db.select().from(layers).where(eq(layers.id, layer.id)))[0]!)).toContain('n_permiso');
+  });
+
+  it('listLayers y getLayer cuentan los registros numerados', async () => {
+    const { layer } = await makeNumberedLayer();
+    expect((await svc.listLayers(db))[0]).toMatchObject({ recordCount: 2, numberedRecordCount: 1 });
+    expect(await svc.getLayer(db, layer.id)).toMatchObject({ recordCount: 2, numberedRecordCount: 1 });
+  });
+});
+
 describe('previewDuplicates (§8.4)', () => {
   it('cuenta grupos de registros con la misma identidad (rol + campos únicos, normalizados)', async () => {
     const layer = await makeLayer();
@@ -321,5 +454,25 @@ describe('deleteLayer', () => {
     const [log] = await db.select().from(auditLogs).where(eq(auditLogs.action, 'DELETE'));
     expect(log!.metadata).toMatchObject({ name: 'Obras Menores', deletedRecords: 2 });
     await expect(svc.deleteLayer(db, actor, layer.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('con registros numerados: un editor no puede; un admin necesita motivo y los números quedan auditados', async () => {
+    const { layer, numbered } = await makeNumberedLayer();
+
+    await expect(svc.deleteLayer(db, editorActor, layer.id)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(svc.deleteLayer(db, actor, layer.id)).rejects.toMatchObject({
+      code: 'VALIDATION',
+      details: { reasonRequired: true, count: 1 },
+    });
+    expect(await db.select().from(records)).toHaveLength(2);
+
+    await svc.deleteLayer(db, actor, layer.id, 'Capa duplicada');
+    expect(await db.select().from(layers)).toHaveLength(0);
+    const [log] = await db.select().from(auditLogs).where(eq(auditLogs.action, 'DELETE'));
+    expect(log!.metadata).toMatchObject({
+      reason: 'Capa duplicada',
+      deletedRecords: 2,
+      numberedRecords: [{ id: numbered.id, number: 7 }],
+    });
   });
 });

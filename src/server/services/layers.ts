@@ -17,8 +17,10 @@ import { requireLayer, type LayerRow } from './_shared';
 import * as attachmentsService from './attachments';
 import * as audit from './audit';
 import { previewDuplicates as previewDuplicatesImpl } from './duplicates';
+import { assertCanDropNumbers, numberedRefs, plural, type NumberedRecordRef } from './numbered';
+import { getAutonumberField } from './numbering';
 
-export type LayerWithCountRow = LayerRow & { recordCount: number };
+export type LayerWithCountRow = LayerRow & { recordCount: number; numberedRecordCount: number };
 
 export async function listLayers(db: DbOrTx): Promise<LayerWithCountRow[]> {
   const rows = await db
@@ -26,16 +28,27 @@ export async function listLayers(db: DbOrTx): Promise<LayerWithCountRow[]> {
       layer: layers,
       // Identificadores explícitos: en un select sin joins Drizzle quita el prefijo de tabla y `"id"` se resolvería a records.id.
       recordCount: sql<number>`(SELECT count(*)::int FROM records r WHERE r.layer_id = layers.id)`,
+      numberedRecordCount: sql<number>`(SELECT count(*)::int FROM records r WHERE r.layer_id = layers.id AND r.number_assigned_at IS NOT NULL)`,
     })
     .from(layers)
     .orderBy(asc(layers.department), asc(layers.sortOrder), asc(layers.name));
-  return rows.map((r) => ({ ...r.layer, recordCount: Number(r.recordCount) }));
+  return rows.map((r) => ({
+    ...r.layer,
+    recordCount: Number(r.recordCount),
+    numberedRecordCount: Number(r.numberedRecordCount),
+  }));
 }
 
 export async function getLayer(db: DbOrTx, id: number): Promise<LayerWithCountRow> {
   const layer = await requireLayer(db, id);
-  const [{ n } = { n: 0 }] = await db.select({ n: sql<number>`count(*)::int` }).from(records).where(eq(records.layerId, id));
-  return { ...layer, recordCount: Number(n) };
+  const [{ n, numbered } = { n: 0, numbered: 0 }] = await db
+    .select({
+      n: sql<number>`count(*)::int`,
+      numbered: sql<number>`(count(*) FILTER (WHERE ${records.numberAssignedAt} IS NOT NULL))::int`,
+    })
+    .from(records)
+    .where(eq(records.layerId, id));
+  return { ...layer, recordCount: Number(n), numberedRecordCount: Number(numbered) };
 }
 
 /** Asigna `key` a los campos nuevos (sin key o con key vacía) a partir del label (§5.2). */
@@ -212,6 +225,22 @@ export async function previewFieldTypeChange(
   return { key, label: field.label, fromType: field.type, toType, ...p };
 }
 
+/**
+ * El cambio de campos hace perder los números del correlativo (§8.8): elimina el campo, lo deja con otro tipo
+ * o, en el correlativo anual, elimina el campo de año. Un renombre mueve los valores y no cuenta.
+ */
+function dropsAutonumber(before: LayerRow, afterFields: LayerField[], renameMap: Map<string, string>): boolean {
+  const auto = getAutonumberField(before);
+  if (!auto) return false;
+  const after = afterFields.find((f) => f.key === (renameMap.get(auto.key) ?? auto.key));
+  if (!after || after.type !== 'autonumber') return true;
+  if (auto.reset === 'yearly' && auto.yearFieldKey) {
+    const yearKey = renameMap.get(auto.yearFieldKey) ?? auto.yearFieldKey;
+    if (!afterFields.some((f) => f.key === yearKey)) return true;
+  }
+  return false;
+}
+
 export async function updateLayer(db: DbOrTx, actor: Actor, id: number, patch: UpdateLayerData): Promise<LayerRow> {
   return db.transaction(async (tx) => {
     const before = await requireLayer(tx, id);
@@ -228,7 +257,9 @@ export async function updateLayer(db: DbOrTx, actor: Actor, id: number, patch: U
     if (patch.sortOrder !== undefined) set.sortOrder = patch.sortOrder;
 
     let migration: FieldsMigrationReport | null = null;
+    let numberedRecords: NumberedRecordRef[] = [];
     const afterFields = patch.fields ?? before.fields;
+    const renameMap = new Map(patch.renames.map((r) => [r.from, r.to]));
     if (patch.fields !== undefined) {
       // validar correlativo anual: el campo de año debe existir
       const auto = afterFields.find((f) => f.type === 'autonumber');
@@ -238,11 +269,28 @@ export async function updateLayer(db: DbOrTx, actor: Actor, id: number, patch: U
           throw new ValidationError('El correlativo anual necesita un campo de año válido');
         }
       }
+      if (dropsAutonumber(before, afterFields, renameMap)) {
+        // Se bloquean todos los registros de la capa y se filtra aquí, como en `deleteLayer`. Un filtro
+        // `number_assigned_at IS NOT NULL` en el SQL saltaría sin bloquearlo un registro que otra transacción
+        // está numerando (se evalúa contra la versión confirmada, sin número) y la migración le borraría el
+        // número sin pasar por esta cuenta. Sin filtro, el SELECT espera a esa transacción y ve el número.
+        const locked = await tx
+          .select({ id: records.id, numberAssignedAt: records.numberAssignedAt, attributes: records.attributes })
+          .from(records)
+          .where(eq(records.layerId, id))
+          .orderBy(asc(records.id))
+          .for('update');
+        const numbered = locked.filter((r) => r.numberAssignedAt);
+        assertCanDropNumbers(actor, numbered.length, patch.reason, {
+          forbidden: `${plural(numbered.length, 'registro tiene', 'registros tienen')} un número asignado por la plataforma. Solo un administrador puede quitar o cambiar el campo correlativo.`,
+          reasonRequired: `Quitar o cambiar el campo correlativo borra el número de ${plural(numbered.length, 'registro', 'registros')}. Indica el motivo.`,
+        });
+        numberedRecords = numberedRefs(before, numbered);
+      }
       migration = await migrateFieldChanges(tx, id, before.fields, afterFields, patch.renames, patch.convertTypes);
       set.fields = afterFields;
     }
 
-    const renameMap = new Map(patch.renames.map((r) => [r.from, r.to]));
     const keys = new Set(afterFields.map((f) => f.key));
     const remap = (k: string | null | undefined): string | null => {
       if (!k) return null;
@@ -273,16 +321,31 @@ export async function updateLayer(db: DbOrTx, actor: Actor, id: number, patch: U
       entityType: 'LAYER',
       entityId: id,
       layerId: id,
-      metadata: { before: b, after: a, ...(migration ? { migration } : {}) },
+      metadata: {
+        before: b,
+        after: a,
+        ...(migration ? { migration } : {}),
+        ...(numberedRecords.length ? { reason: patch.reason, numberedRecords } : {}),
+      },
     });
     return after!;
   });
 }
 
-export async function deleteLayer(db: DbOrTx, actor: Actor, id: number): Promise<void> {
+export async function deleteLayer(db: DbOrTx, actor: Actor, id: number, reason?: string): Promise<void> {
   const storageKeys = await db.transaction(async (tx) => {
     const layer = await requireLayer(tx, id);
-    const recs = await tx.select({ id: records.id }).from(records).where(eq(records.layerId, id));
+    const recs = await tx
+      .select({ id: records.id, numberAssignedAt: records.numberAssignedAt, attributes: records.attributes })
+      .from(records)
+      .where(eq(records.layerId, id))
+      .orderBy(asc(records.id))
+      .for('update');
+    const numbered = recs.filter((r) => r.numberAssignedAt);
+    assertCanDropNumbers(actor, numbered.length, reason, {
+      forbidden: `Esta capa tiene ${plural(numbered.length, 'registro', 'registros')} con número asignado por la plataforma. Solo un administrador puede eliminarla.`,
+      reasonRequired: `Esta capa tiene ${plural(numbered.length, 'registro', 'registros')} con número asignado por la plataforma. Indica el motivo para eliminarla.`,
+    });
     const keys = await attachmentsService.deleteForEntity(
       tx,
       'record',
@@ -295,7 +358,13 @@ export async function deleteLayer(db: DbOrTx, actor: Actor, id: number): Promise
       entityType: 'LAYER',
       entityId: id,
       layerId: id,
-      metadata: { name: layer.name, slug: layer.slug, deletedRecords: recs.length, fields: layer.fields },
+      metadata: {
+        name: layer.name,
+        slug: layer.slug,
+        deletedRecords: recs.length,
+        fields: layer.fields,
+        ...(numbered.length ? { reason, numberedRecords: numberedRefs(layer, numbered) } : {}),
+      },
     });
     return keys;
   });

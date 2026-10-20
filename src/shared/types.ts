@@ -27,7 +27,8 @@ export type { LayerField, GeocodeResult, GeocodeCandidate, RecordGeocodeInfo, Im
 // ---------- Capas ----------
 export type LayerRow = InferSelectModel<typeof s.layers>;
 export type Layer = Jsonified<LayerRow>;
-export type LayerWithCount = Layer & { recordCount: number };
+/** `numberedRecordCount`: registros con número asignado por la plataforma (§8.8). */
+export type LayerWithCount = Layer & { recordCount: number; numberedRecordCount: number };
 
 export type DuplicatesPreview = {
   groups: number;
@@ -235,6 +236,12 @@ export type ApiErrorBody = { error: { code: ApiErrorCode; message: string; detai
 
 /** Detalles de un `Conflict` por identidad repetida (§8.4), para el botón "Abrir registro existente". */
 export type DuplicateConflictDetails = { kind: 'duplicate'; existingRecordId: number; identity: Record<string, string> };
+
+/**
+ * Detalles de un `VALIDATION` cuando la operación haría perder números asignados (§8.8) y falta el motivo:
+ * la UI pide el motivo y reenvía la misma operación con `reason`.
+ */
+export type NumberedRecordsDetails = { reasonRequired: true; count: number };
 
 // ---------- Administración de usuarios (fase 8) ----------
 /** Respuesta de `GET /api/admin/users`: lista acotada por `limit/offset` con el total para paginar. */

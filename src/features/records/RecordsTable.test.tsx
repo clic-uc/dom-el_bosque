@@ -28,6 +28,7 @@ const layer: LayerWithCount = {
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   recordCount: 120,
+  numberedRecordCount: 0,
 };
 
 function record(id: number, extra: Partial<RecordListItem> = {}): RecordListItem {

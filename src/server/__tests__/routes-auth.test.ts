@@ -22,6 +22,7 @@ vi.mock('@/server/auth/session', () => ({
   assertRole: vi.fn(),
 }));
 
+import { DELETE as layerDELETE } from '@/app/api/layers/[id]/route';
 import { GET as featuresGET } from '@/app/api/layers/[id]/features/route';
 import { GET as recordsListGET } from '@/app/api/layers/[id]/records/route';
 import { GET as filtersGET } from '@/app/api/layers/[id]/filters/route';
@@ -182,6 +183,10 @@ describe('editor', () => {
     const plain = await insertRecord({ layerId: layer.id });
     const del2 = await recordDELETE(req(`/api/records/${plain.id}`, { method: 'DELETE' }), ctx({ id: String(plain.id) }));
     expect(del2.status).toBe(204);
+
+    // tampoco puede borrar la capa que tiene ese registro numerado
+    const delLayer = await layerDELETE(req(`/api/layers/${layer.id}`, { method: 'DELETE' }), ctx({ id: String(layer.id) }));
+    expect(delLayer.status).toBe(403);
 
     const rolePatch = await rolePATCH(req('/api/roles/50-1', { method: 'PATCH', body: { address: 'Riquelme 111' } }), ctx({ roleId: '50-1' }));
     expect(rolePatch.status).toBe(200);

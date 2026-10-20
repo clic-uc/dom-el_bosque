@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { isValidReason, ReasonField } from '@/components/shared/reason-field';
 import { EmptyState, ErrorState, LoadingState } from '@/components/shared/states';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { HelpLink } from '@/features/help/HelpLink';
-import { ApiError, api, errorMessage } from '@/lib/api';
+import { ApiError, api, errorMessage, isReasonRequired } from '@/lib/api';
 import { formatDateTime, formatInt } from '@/lib/format';
 import { queryKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
@@ -47,7 +48,17 @@ export function ImportStatusBadge({ status }: { status: ImportStatus }) {
 type Filters = { layerId: string; status: ImportStatus | typeof ALL };
 const emptyFilters: Filters = { layerId: ALL, status: ALL };
 
-type RevertState = { item: ImportItem; force: boolean; conflictMessage?: string } | null;
+/**
+ * `numbered`: el servidor pidió el motivo porque revertir quita números asignados (§8.8). El motivo se conserva
+ * si después llega el aviso de cambios posteriores (`force`).
+ */
+type RevertState = {
+  item: ImportItem;
+  force: boolean;
+  conflictMessage?: string;
+  numbered?: number;
+  reason?: string;
+} | null;
 
 /** Historial de importaciones (§10.3): archivo, estado, capa, conteos, fecha, usuario y acciones. Consume `GET /api/imports`. */
 export function ImportList() {
@@ -71,8 +82,11 @@ export function ImportList() {
   });
 
   const revertMutation = useMutation({
-    mutationFn: ({ item, force }: { item: ImportItem; force: boolean }) =>
-      api<ImportRevertResult>(`/api/imports/${item.id}/revert`, { method: 'POST', json: { force } }),
+    mutationFn: ({ item, force, reason }: { item: ImportItem; force: boolean; reason?: string }) =>
+      api<ImportRevertResult>(`/api/imports/${item.id}/revert`, {
+        method: 'POST',
+        json: reason ? { force, reason } : { force },
+      }),
     onSuccess: (result, { item }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.imports.all });
       void queryClient.invalidateQueries({ queryKey: queryKeys.layers.all });
@@ -82,10 +96,14 @@ export function ImportList() {
         `Importación de ${item.fileName} revertida: ${formatInt(result.deletedRecords)} registros eliminados y ${formatInt(result.restoredRecords + (result.reinsertedRecords ?? 0))} restaurados.`,
       );
     },
-    onError: (err, { item, force }) => {
+    onError: (err, { item, force, reason }) => {
+      if (isReasonRequired(err)) {
+        setRevert({ item, force, numbered: err.details.count, reason: '' });
+        return;
+      }
       // Cambios posteriores a la importación: segunda confirmación con `force`
       if (!force && err instanceof ApiError && err.code === 'CONFLICT') {
-        setRevert({ item, force: true, conflictMessage: err.message });
+        setRevert((prev) => ({ item, force: true, conflictMessage: err.message, numbered: prev?.numbered, reason }));
         return;
       }
       toast.error(errorMessage(err, 'No se pudo revertir la importación. Intenta de nuevo.'));
@@ -251,16 +269,38 @@ export function ImportList() {
                 {formatInt(revert?.item.updatedCount ?? 0)} que modificó a como estaban antes.
               </p>
               <p>La capa quedará como estaba antes de esta importación. Esta acción no se puede deshacer.</p>
+              {revert?.numbered ? (
+                <p className="text-amber-900">
+                  {formatInt(revert.numbered)}{' '}
+                  {revert.numbered === 1 ? 'registro perderá su número' : 'registros perderán su número'} asignado por la
+                  plataforma. Los números quedan en el registro de auditoría y no se vuelven a usar.
+                </p>
+              ) : null}
             </div>
           )
         }
         confirmLabel={revert?.force ? 'Revertir de todos modos' : 'Revertir importación'}
         destructive
         pending={revertMutation.isPending}
+        disabled={!!revert?.numbered && !isValidReason(revert.reason ?? '')}
         onConfirm={() => {
-          if (revert) revertMutation.mutate({ item: revert.item, force: revert.force });
+          if (revert)
+            revertMutation.mutate({
+              item: revert.item,
+              force: revert.force,
+              reason: revert.numbered ? revert.reason?.trim() : undefined,
+            });
         }}
-      />
+      >
+        {revert?.numbered && !revert.force ? (
+          <ReasonField
+            id="revert-reason"
+            value={revert.reason ?? ''}
+            onChange={(v) => setRevert((prev) => (prev ? { ...prev, reason: v } : prev))}
+            placeholder="Por ejemplo: se importó el archivo equivocado"
+          />
+        ) : null}
+      </ConfirmDialog>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { importStatuses } from '../constants';
-import { latSchema, lonSchema, paginationSchema } from './common';
+import { latSchema, lonSchema, paginationSchema, reasonSchema } from './common';
 import { importMessageCodes } from './import-rows';
 
 /** Destinos especiales del mapeo de columnas (además de `field.key`) (§5.6). */
@@ -91,7 +91,11 @@ export const importRemovalsPatchSchema = z
   });
 export type ImportRemovalsPatch = z.infer<typeof importRemovalsPatchSchema>;
 
-export const importRevertSchema = z.object({ force: z.boolean().default(false) });
+export const importRevertSchema = z.object({
+  force: z.boolean().default(false),
+  /** Motivo, si revertir quita números asignados por la plataforma (solo admin, §8.8). */
+  reason: reasonSchema.optional(),
+});
 
 export const importsQuerySchema = paginationSchema.extend({
   layerId: z.coerce.number().int().positive().optional(),

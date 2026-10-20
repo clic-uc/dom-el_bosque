@@ -1,4 +1,4 @@
-import type { ApiErrorBody, ApiErrorCode } from '@/shared/types';
+import type { ApiErrorBody, ApiErrorCode, NumberedRecordsDetails } from '@/shared/types';
 
 /** Error de API en el cliente, con el mensaje en español que envió el servidor. */
 export class ApiError extends Error {
@@ -101,6 +101,20 @@ function defaultMessage(status: number): string {
   if (status === 413) return 'El archivo es demasiado grande';
   if (status === 429) return 'Demasiadas solicitudes. Espera un momento e intenta de nuevo';
   return 'Ocurrió un error inesperado. Intenta de nuevo en unos minutos';
+}
+
+/**
+ * La operación haría perder números asignados por la plataforma y falta el motivo (§8.8): la UI pide el
+ * motivo y reenvía la misma operación con `reason`. No se muestra como error.
+ */
+export function isReasonRequired(err: unknown): err is ApiError & { details: NumberedRecordsDetails } {
+  return (
+    err instanceof ApiError &&
+    err.code === 'VALIDATION' &&
+    typeof err.details === 'object' &&
+    err.details !== null &&
+    (err.details as { reasonRequired?: boolean }).reasonRequired === true
+  );
 }
 
 /** Mensaje de error para mostrar en toasts / formularios. */

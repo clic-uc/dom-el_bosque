@@ -215,6 +215,46 @@ export async function getRoleRow(id: string) {
   return row ?? null;
 }
 
+type ReservedSql = Awaited<ReturnType<typeof sqlClient.reserve>>;
+
+/**
+ * Carrera determinista entre dos transacciones: abre una en otra conexión, escribe con `write` y la deja sin
+ * confirmar mientras arranca `op`. Confirma apenas `op` queda esperando un lock de esa transacción (o termina, o
+ * pasan 5 s) y devuelve si llegó a esperar y en qué terminó.
+ */
+export async function raceWithOpenTransaction<T>(
+  write: (conn: ReservedSql) => Promise<unknown>,
+  op: () => Promise<T>,
+): Promise<{ waited: boolean; result: { ok: true; value: T } | { ok: false; error: unknown } }> {
+  const conn = await sqlClient.reserve();
+  try {
+    await conn`BEGIN`;
+    await write(conn);
+    const [{ pid }] = (await conn`SELECT pg_backend_pid()::int AS pid`) as unknown as [{ pid: number }];
+    let settled = false;
+    const outcome = op().then(
+      (value) => ({ ok: true as const, value }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    void outcome.finally(() => (settled = true));
+    let waited = false;
+    for (let i = 0; i < 250 && !waited && !settled; i++) {
+      const [row] = await db.execute<{ n: number }>(
+        sql`SELECT count(*)::int AS n FROM pg_stat_activity WHERE ${pid}::int = ANY(pg_blocking_pids(pid))`,
+      );
+      waited = Number(row?.n) > 0;
+      if (!waited) await new Promise((r) => setTimeout(r, 20));
+    }
+    await conn`COMMIT`;
+    return { waited, result: await outcome };
+  } catch (e) {
+    await conn`ROLLBACK`.catch(() => undefined);
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
 /** Coordenadas dentro de la comuna de El Bosque (§0). */
 export const IN_COMUNA = { lat: -33.5606, lon: -70.6614 } as const;
 export const IN_COMUNA_2 = { lat: -33.5650, lon: -70.6700 } as const;
