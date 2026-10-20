@@ -212,7 +212,7 @@ export async function getRecord(db: DbOrTx, id: number): Promise<RecordDetail> {
       iconColor: layer.iconColor,
       department: layer.department,
     },
-    attachments: attachments.map((a) => ({ ...a, createdAt: a.createdAt.toISOString() })),
+    attachments,
     sameRoleCount: Number(sameRole[0]?.n ?? 0),
     backsOperation,
     roleLastOperation,

@@ -5,22 +5,20 @@ import { env } from '@/env';
 import { capabilities } from '@/shared/capabilities';
 import { attachmentAllowedExtensions, attachmentAllowedMimeTypes } from '@/shared/constants';
 import type { AttachmentEntityType, CreateLinkAttachmentInput } from '@/shared/schemas/attachments';
+import type { AttachmentDto, AttachmentRow } from '@/shared/types';
 import type { Actor } from '../auth/session';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
-import { matchesExtension } from '../file-signature';
+import { detectContentType } from '../file-signature';
 import { storage } from '../storage';
 import * as audit from './audit';
 
-export type AttachmentRow = typeof attachments.$inferSelect;
 /** Lo que sale hacia el cliente: sin la clave interna del archivo en el storage. */
-export type AttachmentOut = Omit<AttachmentRow, 'storageKey'>;
-
-export function toAttachmentDto(row: AttachmentRow): AttachmentOut {
+function toAttachmentDto(row: AttachmentRow): AttachmentDto {
   const { storageKey: _storageKey, ...dto } = row;
-  return dto;
+  return { ...dto, createdAt: row.createdAt.toISOString() };
 }
 
-export async function listAttachments(db: DbOrTx, entityType: AttachmentEntityType, entityId: string): Promise<AttachmentOut[]> {
+export async function listAttachments(db: DbOrTx, entityType: AttachmentEntityType, entityId: string): Promise<AttachmentDto[]> {
   const rows = await db
     .select()
     .from(attachments)
@@ -42,7 +40,7 @@ async function assertEntityExists(db: DbOrTx, entityType: AttachmentEntityType, 
   return null;
 }
 
-export async function addLink(db: DbOrTx, actor: Actor, input: CreateLinkAttachmentInput): Promise<AttachmentOut> {
+export async function addLink(db: DbOrTx, actor: Actor, input: CreateLinkAttachmentInput): Promise<AttachmentDto> {
   const layerId = await assertEntityExists(db, input.entityType, input.entityId);
   return db.transaction(async (tx) => {
     const [row] = await tx
@@ -82,14 +80,31 @@ export function validateAttachmentFile(file: FileInput): void {
   }
 }
 
-/** Los primeros bytes deben corresponder a la extensión: un ejecutable renombrado `.pdf` no entra. */
-function assertContentMatchesExtension(fileName: string, bytes: Uint8Array): void {
+/** Cómo nombrar cada tipo en el mensaje de rechazo, en palabras de quien usa el sistema. */
+const kindLabel: Record<string, string> = {
+  pdf: 'un PDF válido',
+  doc: 'un documento de Word válido',
+  docx: 'un documento de Word válido',
+  xls: 'una planilla de Excel válida',
+  xlsx: 'una planilla de Excel válida',
+  ppt: 'una presentación de PowerPoint válida',
+  pptx: 'una presentación de PowerPoint válida',
+  dwg: 'un plano DWG válido',
+  dxf: 'un plano DXF válido',
+};
+
+/**
+ * Los primeros bytes deben corresponder a la extensión: un ejecutable renombrado `.pdf` no entra.
+ * Devuelve el tipo MIME detectado, que es el que se guarda (no el que declara el navegador).
+ */
+function contentTypeOrReject(fileName: string, bytes: Uint8Array): string {
   const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-  if (!matchesExtension(ext, bytes)) {
-    throw new ValidationError(
-      `El contenido del archivo no corresponde a un ${ext.toUpperCase()}. Revisa que sea el archivo correcto o guárdalo de nuevo desde el programa que lo creó.`,
-    );
+  const mimeType = detectContentType(ext, bytes);
+  if (!mimeType) {
+    const label = Object.hasOwn(kindLabel, ext) ? kindLabel[ext] : 'una imagen válida';
+    throw new ValidationError(`Este archivo no es ${label}. Revisa que sea el archivo correcto e intenta de nuevo.`);
   }
+  return mimeType;
 }
 
 /** Staging: sin disco persistente no se aceptan archivos (los enlaces sí). */
@@ -102,13 +117,13 @@ export async function addFile(
   actor: Actor,
   input: { entityType: AttachmentEntityType; entityId: string; title: string },
   file: FileInput,
-): Promise<AttachmentOut> {
+): Promise<AttachmentDto> {
   assertFileAttachmentsEnabled();
   validateAttachmentFile(file);
   const layerId = await assertEntityExists(db, input.entityType, input.entityId);
   const content = Buffer.from(await file.arrayBuffer());
   // antes de guardar: un archivo rechazado no llega al storage
-  assertContentMatchesExtension(file.name, content);
+  const mimeType = contentTypeOrReject(file.name, content);
   const id = crypto.randomUUID();
   const storageKey = `attachments/${id}`;
   await storage.put(storageKey, content);
@@ -124,7 +139,7 @@ export async function addFile(
           title: input.title,
           storageKey,
           fileName: file.name,
-          mimeType: file.type || 'application/octet-stream',
+          mimeType,
           sizeBytes: file.size,
           createdBy: actor.userId,
         })

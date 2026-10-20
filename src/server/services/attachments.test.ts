@@ -136,9 +136,9 @@ describe('attachments.service', () => {
     const filePath = path.join(storage.root, 'attachments', row.id);
     expect(existsSync(filePath)).toBe(true);
 
-    // DWG llega como octet-stream y se acepta por extensión
+    // DWG llega como octet-stream: se acepta por extensión y se guarda con el tipo que corresponde
     const dwg = await attachmentsService.addFile(db, actor, { ...input, title: 'Plano' }, makeFile('plano.dwg', 'application/octet-stream', 100));
-    expect(dwg.mimeType).toBe('application/octet-stream');
+    expect(dwg.mimeType).toBe('image/vnd.dwg');
 
     const { row: found, stream } = await attachmentsService.getDownload(db, row.id);
     expect(found.id).toBe(row.id);
@@ -170,10 +170,13 @@ describe('attachments.service', () => {
 
     await expect(
       attachmentsService.addFile(db, actor, input, makeFile('informe.pdf', 'application/pdf', 64, exe)),
-    ).rejects.toThrow(/no corresponde a un PDF/);
+    ).rejects.toThrow('Este archivo no es un PDF válido. Revisa que sea el archivo correcto e intenta de nuevo.');
     await expect(
       attachmentsService.addFile(db, actor, input, makeFile('planilla.xls', 'application/vnd.ms-excel', 64, [...Buffer.from('<html>')])),
-    ).rejects.toBeInstanceOf(ValidationError);
+    ).rejects.toThrow(/no es una planilla de Excel válida/);
+    await expect(
+      attachmentsService.addFile(db, actor, input, makeFile('foto.jpg', 'image/jpeg', 64, [...Buffer.from('%PDF-1.7')])),
+    ).rejects.toThrow(/no es una imagen válida/);
     expect(await db.select().from(attachments)).toHaveLength(0);
     expect(stored()).toBe(before);
 
@@ -187,6 +190,26 @@ describe('attachments.service', () => {
     const list = await attachmentsService.listAttachments(db, 'record', String(recordId));
     expect(list.map((a) => a.id).sort()).toEqual([docx.id, dxf.id].sort());
     for (const a of list) expect(a).not.toHaveProperty('storageKey');
+  });
+
+  it('archivos: una foto con la extensión cambiada se acepta y se guarda con su tipo real', async () => {
+    const recordId = await createRecord();
+    const input = { entityType: 'record' as const, entityId: String(recordId), title: 'Foto de terreno' };
+    const webp = [...Buffer.from('RIFF'), 0x24, 0, 0, 0, ...Buffer.from('WEBPVP8 ')];
+    const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+    const fromWhatsapp = await attachmentsService.addFile(db, actor, input, makeFile('IMG-2026.jpg', 'image/jpeg', 64, webp));
+    expect(fromWhatsapp.mimeType).toBe('image/webp');
+    const fromWeb = await attachmentsService.addFile(db, actor, input, makeFile('captura.jpeg', 'image/jpeg', 64, png));
+    expect(fromWeb.mimeType).toBe('image/png');
+
+    // la descarga usa el tipo guardado, no el que declaró el navegador
+    const { row } = await attachmentsService.getDownload(db, fromWhatsapp.id);
+    expect(row.mimeType).toBe('image/webp');
+
+    // un PDF declarado como imagen se guarda como PDF
+    const pdf = await attachmentsService.addFile(db, actor, input, makeFile('oficio.pdf', 'image/png', 64));
+    expect(pdf.mimeType).toBe('application/pdf');
   });
 
   it('deleteForEntity borra las filas y devuelve las claves para purgar el storage', async () => {
