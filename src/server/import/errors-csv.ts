@@ -2,6 +2,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import Papa from 'papaparse';
 import type { DbOrTx } from '@/db/client';
 import { importRows } from '@/db/schema';
+import { neutralizeFormula } from '../csv';
 import { headersOf } from './analyze';
 import { requireImport } from './service';
 
@@ -22,17 +23,25 @@ export async function buildErrorsCsv(
 
   const headers = headersOf(imp);
 
-  const data = rows.map((r) => [
-    String(r.rowNumber),
-    ...headers.map((h) => r.raw[h] ?? ''),
-    r.messages
-      .filter((m) => m.level === 'error')
-      .map((m) => m.message)
-      .join(' | '),
-  ]);
+  // El archivo trae las celdas crudas de la planilla subida: se neutralizan antes de devolverlo.
+  // No se usa `escapeFormulae` de Papa porque también marca los números negativos.
+  const data = rows.map((r) =>
+    [
+      String(r.rowNumber),
+      ...headers.map((h) => r.raw[h] ?? ''),
+      r.messages
+        .filter((m) => m.level === 'error')
+        .map((m) => m.message)
+        .join(' | '),
+    ].map(neutralizeFormula),
+  );
 
   const csv =
-    '﻿' + Papa.unparse({ fields: ['Fila', ...headers, 'Error'], data }, { delimiter: ';', newline: '\r\n' });
+    '﻿' +
+    Papa.unparse(
+      { fields: ['Fila', ...headers, 'Error'].map(neutralizeFormula), data },
+      { delimiter: ';', newline: '\r\n' },
+    );
   const base = imp.fileName.replace(/\.[^.]+$/, '') || 'importacion';
   return { csv, count: rows.length, fileName: `${base}-errores.csv` };
 }

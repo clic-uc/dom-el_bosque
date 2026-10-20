@@ -1,3 +1,4 @@
+import { restoreFormulaText } from '../csv';
 import { ValidationError } from '../errors';
 
 /**
@@ -20,6 +21,15 @@ export type ParsedTable = {
 };
 
 export type CellStringifier = (v: unknown) => string;
+
+/**
+ * Texto de una celda, sin el `'` que la exportación antepone a lo que una planilla leería como fórmula: así un
+ * CSV descargado de la plataforma (de una capa o de filas con errores) se puede volver a subir tal cual.
+ */
+const cellText =
+  (stringify: CellStringifier): CellStringifier =>
+  (v) =>
+    restoreFormulaText(stringify(v));
 
 /** Letra de columna estilo Excel (0 → A, 26 → AA). */
 export function columnLetter(index: number): string {
@@ -90,9 +100,10 @@ export function detectHeaderRow(
   stringify: CellStringifier,
   limit = 50,
 ): number | null {
+  const text = cellText(stringify);
   const max = Math.min(records.length, limit);
   for (let i = 0; i < max; i++) {
-    const cells = (records[i] ?? []).map(stringify);
+    const cells = (records[i] ?? []).map(text);
     const nonEmpty = cells.filter((c) => c.trim() !== '').length;
     if (nonEmpty < 2) continue;
     const check = checkHeaders(cells);
@@ -113,7 +124,8 @@ export function buildTable(
       `La fila de encabezados ${headerRow} no existe: el archivo tiene ${records.length} fila${records.length === 1 ? '' : 's'}.`,
     );
   }
-  const headerCells = (records[headerRow - 1] ?? []).map(stringify);
+  const text = cellText(stringify);
+  const headerCells = (records[headerRow - 1] ?? []).map(text);
   const check = checkHeaders(headerCells);
   if (!check.ok) throw new ValidationError(check.message);
   const headers = check.headers;
@@ -124,7 +136,7 @@ export function buildTable(
     const values: Record<string, string> = {};
     let hasContent = false;
     for (let c = 0; c < headers.length; c++) {
-      const s = stringify(record[c]);
+      const s = text(record[c]);
       if (s.trim() !== '') hasContent = true;
       values[headers[c]!] = s;
     }

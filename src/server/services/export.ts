@@ -3,6 +3,7 @@ import type { DbOrTx } from '@/db/client';
 import { records } from '@/db/schema';
 import { coordsSourceLabels } from '@/shared/constants';
 import { formatFieldValue } from '@/lib/format';
+import { neutralizeFormula } from '../csv';
 import { requireLayer } from './_shared';
 
 /**
@@ -12,7 +13,7 @@ import { requireLayer } from './_shared';
 
 function csvCell(value: unknown, delimiter: string): string {
   if (value === null || value === undefined) return '';
-  const s = String(value);
+  const s = neutralizeFormula(String(value));
   if (s.includes('"') || s.includes(delimiter) || s.includes('\n') || s.includes('\r')) {
     return `"${s.replace(/"/g, '""')}"`;
   }

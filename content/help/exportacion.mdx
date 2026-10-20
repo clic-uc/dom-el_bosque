@@ -7,6 +7,15 @@ compartir información, hacer informes o trabajar con los datos fuera de la plat
 
 <DraftBanner />
 
+## Si una celda empieza con un apóstrofo (')
+
+Algunas celdas pueden aparecer en Excel con un apóstrofo al comienzo, por ejemplo `'+56 9 1234 5678` o
+`'- pendiente`. Es a propósito: la plataforma lo agrega a los textos que empiezan con `=`, `+`, `-` o `@` para que
+Excel los muestre tal cual y no los trate como una fórmula.
+
+No necesitas borrarlo. Si vuelves a subir el archivo en una importación, la plataforma quita ese apóstrofo y
+guarda el texto original.
+
 ## Qué se explicará aquí
 
 - Cómo elegir la **capa** a exportar y si se exportan todos los registros o solo los filtrados.

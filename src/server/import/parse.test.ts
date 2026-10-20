@@ -57,6 +57,22 @@ describe('parseCsv (§8.5 paso 2)', () => {
     expect(columnLetter(26)).toBe('AA');
     expect(detectHeaderRow([['solo titulo'], ['Rol', 'Monto']], String)).toBe(2);
   });
+
+  it('quita el apóstrofo que la exportación antepone a fórmulas, también en los encabezados', () => {
+    const buf = csvBuffer(
+      ['Rol', "'=Nota", 'Teléfono'],
+      [
+        ['1-1', "'- pendiente", "'+56 9 1234 5678"],
+        ['2-2', "'hola", "'-33.565407"],
+      ],
+    );
+    const t = parseCsv(buf);
+    expect(t.headers).toEqual(['Rol', '=Nota', 'Teléfono']);
+    expect(t.rows.map((r) => r.values)).toEqual([
+      { Rol: '1-1', '=Nota': '- pendiente', Teléfono: '+56 9 1234 5678' },
+      { Rol: '2-2', '=Nota': "'hola", Teléfono: "'-33.565407" },
+    ]);
+  });
 });
 
 describe('parseXlsx', () => {
@@ -83,6 +99,20 @@ describe('parseXlsx', () => {
     const t = await parseXlsx(buf, { sheetName: 'Resumen', headerRow: 1 });
     expect(t.headers).toEqual(['Total', '1']);
     await expect(parseXlsx(buf, { sheetName: 'Nada' })).rejects.toThrow(/no existe/);
+  });
+
+  it('quita el apóstrofo de un CSV exportado y guardado como Excel', async () => {
+    const buf = await xlsxBuffer(
+      ['Rol', "'@Nota"],
+      [
+        ['1-1', "'=1+1"],
+        ['2-2', "'hola"],
+      ],
+      { titleRows: 0 },
+    );
+    const t = await parseXlsx(buf);
+    expect(t.headers).toEqual(['Rol', '@Nota']);
+    expect(t.rows.map((r) => r.values['@Nota'])).toEqual(['=1+1', "'hola"]);
   });
 
   it('stringifyXlsxCell: decimales con coma, enteros tal cual, sin ruido de coma flotante', () => {

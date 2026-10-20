@@ -3,7 +3,8 @@
  * reversión con ids originales, correlativos históricos, rol por dirección exacta, rol no vigente, CSV Windows-1252,
  * cola de geocodificación externa con proveedor falso, descartar, cambiar hoja y limpieza de borradores vencidos.
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
+import Papa from 'papaparse';
 import { describe, expect, it, vi } from 'vitest';
 import {
   attachments,
@@ -34,6 +35,7 @@ import { csvBuffer, fakeFile, roleOf, xlsxBuffer, type Cell } from './__tests__/
 import { runAnalyze, startAnalyze } from './analyze';
 import { cleanupExpiredImports } from './cleanup';
 import { runCommit, startCommit } from './commit';
+import { buildErrorsCsv } from './errors-csv';
 import { runGeocodeExternal } from './geocode-external';
 import {
   bulkRows,
@@ -279,6 +281,97 @@ describe('Reemplazo completo (§8.5 paso 4)', () => {
         analyzeInput({ Rol: 'roleId', 'N° Permiso': 'n_permiso' }, { fullReplace: true }),
       ),
     ).rejects.toThrow(/campos únicos/);
+  });
+});
+
+describe('CSV de errores', () => {
+  it('guarda como texto las celdas que una planilla leería como fórmula', async () => {
+    const layer = await createLayer({ hasRole: true, fields: baseFields() });
+    const id = await uploadAndAnalyze(
+      layer.id,
+      'formulas.csv',
+      csvBuffer(
+        ['Rol', 'N° Permiso', '=Extra'],
+        [
+          ['=1+1', 1, '-33.565407'],
+          ['@SUM(A1)', 2, '-5 años'],
+        ],
+      ),
+      analyzeInput({ Rol: 'roleId', 'N° Permiso': 'n_permiso', '=Extra': null }),
+    );
+    const { csv, count } = await buildErrorsCsv(db, id);
+    expect(count).toBe(2);
+    const lines = csv
+      .replace(/^\uFEFF/, '')
+      .trim()
+      .split('\r\n');
+    expect(lines[0]).toBe("Fila;Rol;N° Permiso;'=Extra;Error");
+    const cells = lines.slice(1).map((l) => l.split(';'));
+    expect(cells.map((c) => c[1])).toEqual(["'=1+1", "'@SUM(A1)"]);
+    expect(cells.map((c) => c[3])).toEqual(['-33.565407', "'-5 años"]);
+  });
+
+  it('se puede corregir y volver a subir: los valores quedan sin el apóstrofo agregado', async () => {
+    const layer = await createLayer({
+      hasRole: true,
+      fields: [
+        field('n_permiso', 'N° Permiso', 'number', { required: true }),
+        field('telefono', 'Teléfono'),
+        field('nota', 'Nota'),
+      ],
+      uniqueKeys: [],
+    });
+    await createRole(roleOf(1), { lat: -33.56, lon: -70.66 });
+    await createRole(roleOf(2), { lat: -33.56, lon: -70.66 });
+    const originals = [
+      { telefono: '+56 9 1234 5678', nota: '- pendiente' },
+      { telefono: "'hola", nota: '=1+1' },
+    ];
+    const first = await uploadAndAnalyze(
+      layer.id,
+      'contactos.csv',
+      csvBuffer(
+        ['Rol', 'N° Permiso', 'Teléfono', '=Nota'],
+        [
+          [roleOf(1), 'uno', originals[0]!.telefono, originals[0]!.nota],
+          [roleOf(2), 'dos', originals[1]!.telefono, originals[1]!.nota],
+        ],
+      ),
+      analyzeInput({ Rol: 'roleId', 'N° Permiso': 'n_permiso', Teléfono: 'telefono', '=Nota': 'nota' }),
+    );
+    expect(await commit(first)).toMatchObject({ createdCount: 0, failedCount: 2 });
+
+    // Como lo haría el usuario: abre el CSV de errores, corrige el número y lo guarda (Excel conserva el `'`).
+    const { csv } = await buildErrorsCsv(db, first);
+    const parsed = Papa.parse<string[]>(csv.replace(/^\uFEFF/, ''), { delimiter: ';', skipEmptyLines: true });
+    const [headers, ...rows] = parsed.data;
+    expect(headers).toEqual(['Fila', 'Rol', 'N° Permiso', 'Teléfono', "'=Nota", 'Error']);
+    rows.forEach((r, i) => (r[2] = String(10 + i)));
+    const fixed = Buffer.from(Papa.unparse([headers!, ...rows], { delimiter: ';', newline: '\r\n' }), 'utf8');
+
+    const second = await uploadAndAnalyze(
+      layer.id,
+      'contactos-errores.csv',
+      fixed,
+      analyzeInput({
+        Fila: null,
+        Rol: 'roleId',
+        'N° Permiso': 'n_permiso',
+        Teléfono: 'telefono',
+        '=Nota': 'nota',
+        Error: null,
+      }),
+    );
+    expect(await commit(second)).toMatchObject({ createdCount: 2, failedCount: 0 });
+    const stored = await db
+      .select({ attributes: records.attributes })
+      .from(records)
+      .where(eq(records.layerId, layer.id))
+      .orderBy(asc(records.roleId));
+    expect(stored.map((r) => r.attributes)).toEqual([
+      { n_permiso: 10, ...originals[0] },
+      { n_permiso: 11, ...originals[1] },
+    ]);
   });
 });
 
