@@ -306,7 +306,10 @@ export async function createRecord(db: DbOrTx, actor: Actor, input: CreateRecord
 
 export async function updateRecord(db: DbOrTx, actor: Actor, id: number, patch: UpdateRecordData): Promise<RecordDetail> {
   const layerId = await db.transaction(async (tx) => {
-    const [before] = await tx.select(recordColumns).from(records).where(eq(records.id, id)).limit(1);
+    // Con `FOR UPDATE`: si se está asignando o corrigiendo el número del registro, se espera a que termine y se
+    // parte de los atributos con el número. Sin el lock, el UPDATE de abajo esperaría igual, pero escribiría los
+    // atributos leídos antes y borraría el número (`number_assigned_at` quedaría puesto).
+    const [before] = await tx.select(recordColumns).from(records).where(eq(records.id, id)).limit(1).for('update');
     if (!before) throw new NotFoundError('El registro no existe o fue eliminado');
     const layer = await requireLayer(tx, before.layerId);
 

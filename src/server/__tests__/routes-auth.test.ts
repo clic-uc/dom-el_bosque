@@ -208,6 +208,21 @@ describe('editor', () => {
     expect(delOp.status).toBe(403);
     expect((await rolesImportPOST(req('/api/roles/import', { method: 'POST' }), ctx({}))).status).toBe(403);
   });
+
+  it('dos asignaciones simultáneas del número del mismo registro → una 200 y la otra 409', async () => {
+    const layer = await createLayer({ fields: [field('n_permiso', 'N° Permiso', 'autonumber'), field('tipo', 'Tipo')] });
+    const rec = await insertRecord({ layerId: layer.id });
+    as(editor);
+
+    const assign = () => numberPOST(req(`/api/records/${rec.id}/number`, { method: 'POST' }), ctx({ id: String(rec.id) }));
+    const responses = await Promise.all([assign(), assign()]);
+    const ok = responses.filter((r) => r.status === 200);
+    const conflict = responses.filter((r) => r.status === 409);
+    expect(ok).toHaveLength(1);
+    expect(conflict).toHaveLength(1);
+    expect(await ok[0]!.json()).toEqual({ number: 1, fieldKey: 'n_permiso' });
+    expect(await errorCode(conflict[0]!)).toBe('CONFLICT');
+  });
 });
 
 describe('admin', () => {

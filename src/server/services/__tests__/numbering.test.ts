@@ -63,6 +63,23 @@ describe('assignNumber', () => {
     await expect(numbering.assignNumber(db, editor, hist.id)).rejects.toBeInstanceOf(ConflictError);
   });
 
+  it('dos asignaciones simultáneas sobre el mismo registro → una da el número y la otra Conflict, sin huecos', async () => {
+    const layer = await createLayer({ fields: autoFields() });
+    for (let i = 1; i <= 10; i++) {
+      const rec = await insertRecord({ layerId: layer.id });
+      const outcomes = await Promise.allSettled([numbering.assignNumber(db, editor, rec.id), numbering.assignNumber(db, editor, rec.id)]);
+      const numbers = outcomes.flatMap((o) => (o.status === 'fulfilled' ? [o.value.number] : []));
+      const errors = outcomes.flatMap((o) => (o.status === 'rejected' ? [o.reason] : []));
+      expect(numbers).toEqual([i]);
+      expect(errors).toEqual([expect.any(ConflictError)]);
+      expect((await getRecordRow(rec.id))?.attributes.n_permiso).toBe(i);
+    }
+    // el contador avanzó uno por registro y hay una sola asignación auditada por registro
+    expect(await numbering.getCounters(db, layer.id)).toEqual([{ fieldKey: 'n_permiso', period: '', lastValue: 10, next: 11 }]);
+    const logs = await db.select().from(auditLogs).where(eq(auditLogs.action, 'ASSIGN_NUMBER'));
+    expect(logs).toHaveLength(10);
+  });
+
   it('borrar el registro con el último número no lo reutiliza', async () => {
     const layer = await createLayer({ fields: autoFields() });
     const a = await insertRecord({ layerId: layer.id });

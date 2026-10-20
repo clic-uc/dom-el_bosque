@@ -11,6 +11,7 @@ import { createLayerSchema, type LayerFieldInput } from '@/shared/schemas/layers
 import { raceWithOpenTransaction } from './__tests__/helpers';
 import * as layersSvc from './layers';
 import * as svc from './numbering';
+import * as recordsSvc from './records';
 
 const actor: Actor = { userId: 't', email: 't@t', name: 'T', role: 'admin', rawRole: 'admin', mustChangePassword: false };
 
@@ -170,5 +171,53 @@ describe('assignNumber / setNumber con transacciones concurrentes', () => {
     expect(result).toMatchObject({ ok: true, value: { number: 5 } });
     const [row] = await db.select().from(records).where(sql`${records.id} = ${rec.id}`);
     expect(row!.attributes).toEqual({ direccion: 'Calle 2', n_permiso: 5 });
+  });
+
+  it('assignNumber espera a quien está editando el registro y conserva sus cambios', async () => {
+    const layer = await makeLayer();
+    const rec = await insertRecord(layer.id, { direccion: 'Calle 1' });
+
+    const { waited, result } = await raceWithOpenTransaction(
+      (conn) =>
+        conn`UPDATE records SET attributes = attributes || '{"direccion": "Calle 2"}'::jsonb WHERE id = ${rec.id}`,
+      () => svc.assignNumber(db, actor, rec.id),
+    );
+    expect(waited).toBe(true);
+    expect(result).toMatchObject({ ok: true, value: { number: 1 } });
+    const [row] = await db.select().from(records).where(sql`${records.id} = ${rec.id}`);
+    expect(row!.attributes).toEqual({ direccion: 'Calle 2', n_permiso: 1 });
+  });
+
+  it('una edición que llega mientras se asigna el número espera y no lo borra', async () => {
+    const layer = await makeLayer();
+    const rec = await insertRecord(layer.id, { direccion: 'Calle 1' });
+
+    // Otra transacción le está dando el número 1 (lo que escribe assignNumber) y aún no confirma.
+    const { waited, result } = await raceWithOpenTransaction(
+      (conn) =>
+        conn`UPDATE records SET attributes = attributes || '{"n_permiso": 1}'::jsonb, number_assigned_at = now() WHERE id = ${rec.id}`,
+      () => recordsSvc.updateRecord(db, actor, rec.id, { attributes: { direccion: 'Calle 2' } }),
+    );
+    expect(waited).toBe(true);
+    expect(result).toMatchObject({ ok: true });
+    const [row] = await db.select().from(records).where(sql`${records.id} = ${rec.id}`);
+    expect(row!.attributes).toEqual({ direccion: 'Calle 2', n_permiso: 1 });
+    expect(row!.numberAssignedAt).not.toBeNull();
+  });
+
+  it('una edición que llega mientras se corrige el número espera y conserva la corrección', async () => {
+    const layer = await makeLayer();
+    const rec = await insertRecord(layer.id, { direccion: 'Calle 1', n_permiso: 5 });
+    await db.update(records).set({ numberAssignedAt: new Date() }).where(sql`${records.id} = ${rec.id}`);
+
+    // Otra transacción corrige el 5 por el 7 (lo que escribe setNumber) y aún no confirma.
+    const { waited, result } = await raceWithOpenTransaction(
+      (conn) => conn`UPDATE records SET attributes = attributes || '{"n_permiso": 7}'::jsonb WHERE id = ${rec.id}`,
+      () => recordsSvc.updateRecord(db, actor, rec.id, { attributes: { direccion: 'Calle 2' } }),
+    );
+    expect(waited).toBe(true);
+    expect(result).toMatchObject({ ok: true });
+    const [row] = await db.select().from(records).where(sql`${records.id} = ${rec.id}`);
+    expect(row!.attributes).toEqual({ direccion: 'Calle 2', n_permiso: 7 });
   });
 });
