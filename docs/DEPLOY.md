@@ -65,13 +65,13 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d --bui
 
 Usa siempre `--env-file .env.production`: así compose toma de ahí `NEXT_PUBLIC_*` (se insertan en el bundle del navegador al construir la imagen) y `SITE_ADDRESS` para Caddy. Si existiera un `.env` de desarrollo en la carpeta, compose lo usaría en su lugar y la imagen quedaría apuntando a `localhost`.
 
-La primera construcción tarda varios minutos (instala dependencias y compila). Al arrancar, el servicio `app` ejecuta `node scripts/migrate.js` (crea las extensiones `postgis` y `pg_trgm`, las tablas y los índices) y luego el servidor; `worker` espera a que `app` responda `/api/health` y `caddy` espera a `app`.
+La primera construcción tarda varios minutos (instala dependencias y compila). Al arrancar, el servicio `app` ejecuta `node scripts/migrate.js` (crea las extensiones `postgis` y `pg_trgm`, las tablas y los índices, y recalcula la dirección normalizada del padrón; ver 4.2) y luego el servidor; `worker` espera a que `app` responda `/api/health` y `caddy` espera a `app`.
 
 Verifica:
 
 ```bash
 docker compose -f docker-compose.prod.yml ps          # todos "running", app y db "healthy"
-docker compose -f docker-compose.prod.yml logs -f app # "Migraciones aplicadas." y "Ready"
+docker compose -f docker-compose.prod.yml logs -f app # "Migraciones aplicadas.", "Direcciones del padrón revisadas: …" y "Ready"
 curl -fsS https://sigdomelbosque.cl/api/health        # {"status":"ok","db":"ok"}
 ```
 
@@ -102,6 +102,7 @@ El administrador creado por CLI entra con la contraseña indicada y no se le exi
 - Guardarlo fuera del repositorio, por ejemplo en `/opt/sigdom-data/roles.csv` con permisos `600` y dueño el usuario que opera el servidor.
 - Importarlo por la entrada estándar, como en el bloque anterior: el archivo no se copia al contenedor ni queda en su `/tmp`. La auditoría registra `/dev/stdin` como nombre del archivo. `-T` es obligatorio, porque sin él `exec` asigna una terminal y no pasa el archivo.
 - Reimportar cuando el SII o la DOM entreguen un padrón actualizado: la importación actualiza coordenadas y direcciones, mueve los registros que toman la ubicación del rol y lista los roles vigentes que ya no vienen en el padrón.
+- La dirección normalizada del padrón guardado (con la que se buscan y calzan direcciones) se recalcula sola en cada despliegue, después de las migraciones (4.2). Si hiciera falta repetirlo a mano: `docker compose -f docker-compose.prod.yml exec app node scripts/import-roles.js --renormalize` (no necesita el CSV, es idempotente y solo escribe los roles que cambian).
 
 El repositorio ignora `roles.csv` y `data/roles*.csv` por si se deja una copia local en desarrollo.
 
@@ -137,11 +138,11 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d --bui
 docker compose -f docker-compose.prod.yml logs -f app   # esperar "Migraciones aplicadas." y "Ready"
 ```
 
-Las migraciones de base de datos corren automáticamente en el entrypoint de `app` antes de arrancar el servidor; no hay que ejecutar nada a mano. Si una nueva versión trae capas o polígonos nuevos, repite `seed.js` y `geo-import.js` (son idempotentes). La indisponibilidad durante la actualización es de unos segundos (el tiempo de reemplazar el contenedor).
+Las migraciones de base de datos corren automáticamente en el entrypoint de `app` antes de arrancar el servidor, y a continuación el mismo paso recalcula la dirección normalizada del padrón de roles con las reglas de la versión nueva (el log muestra "Direcciones del padrón revisadas: N; recalculadas: M."). Es idempotente: si las reglas no cambiaron no escribe nada, con el padrón vacío no hace nada, y si cambiaron actualiza solo esos roles (unos segundos para ~42.000) y deja una entrada en Auditoría. No hay que ejecutar nada a mano. Si una nueva versión trae capas o polígonos nuevos, repite `seed.js` y `geo-import.js` (son idempotentes). La indisponibilidad durante la actualización es de unos segundos (el tiempo de reemplazar el contenedor).
 
 ### 4.3 Si algo falla tras actualizar (rollback)
 
-1. Mira los logs: `docker compose -f docker-compose.prod.yml logs --tail=300 app`. Si la migración falló, el contenedor se reinicia en bucle y los logs muestran el error SQL.
+1. Mira los logs: `docker compose -f docker-compose.prod.yml logs --tail=300 app`. Si la migración o el recálculo del padrón falló ("Error al migrar"), el contenedor se reinicia en bucle y los logs muestran el error SQL; ninguno de los dos deja cambios a medias.
 2. Vuelve a la versión anterior del código y reconstruye:
    ```bash
    git log --oneline -5                  # identificar el commit anterior
@@ -150,6 +151,7 @@ Las migraciones de base de datos corren automáticamente en el entrypoint de `ap
    ```
    Como alternativa más rápida, antes de actualizar etiqueta la imagen que funciona (`docker tag sigdom-app:latest sigdom-app:estable`) y, si hace falta, vuelve a ella con `docker tag sigdom-app:estable sigdom-app:latest && docker compose --env-file .env.production -f docker-compose.prod.yml up -d --no-build app worker`. Sin `--env-file`, compose recrearía `db` sin su contraseña en el entorno.
 3. Si la migración nueva ya modificó la base y la versión anterior no la entiende, restaura el respaldo previo (4.5) **después** de volver al código anterior.
+   Las versiones que recalculan el padrón al arrancar (4.2) lo ajustan solas a sus propias reglas también al volver atrás. Si vuelves a una versión anterior a ese recálculo automático, reimporta el padrón (3.4, paso 3) para que las direcciones normalizadas queden como las espera esa versión.
 4. Documenta el incidente y corrige en una rama antes de reintentar.
 
 ### 4.4 Respaldos
@@ -214,6 +216,7 @@ Caddy emite un certificado local autofirmado para `localhost` (el navegador avis
 | Seeds / polígonos     | `… exec app node scripts/seed.js` / `… exec app node scripts/geo-import.js`                   |
 | Padrón de roles       | `… exec -T app node scripts/import-roles.js /dev/stdin < /ruta/segura/roles.csv`              |
 | Primer administrador  | `… exec app node scripts/create-admin.js --email <correo> --name "<nombre>"`                  |
+| Recalcular direcciones del padrón | Automático al desplegar; a mano: `… exec app node scripts/import-roles.js --renormalize` |
 | Respaldo              | `./scripts/backup-db.sh [etiqueta]`                                                           |
 | Restaurar             | `./scripts/restore-db.sh backups/backup_….sql.gz [backups/storage_….tar.gz]`                  |
 | Prueba de humo        | `SMOKE_EMAIL=… SMOKE_PASSWORD=… ./scripts/smoke.sh https://sigdomelbosque.cl`                 |
@@ -266,9 +269,11 @@ La variable se fija **en el build** (`NEXT_PUBLIC_*`): si se cambia en Vercel ha
 
    En PowerShell: `$env:ENV_FILE='.env.staging'; pnpm db:migrate` (y lo mismo para el resto). Si la terminal ya tiene `DATABASE_URL` definida, `ENV_FILE` se ignora.
 
-5. **Padrón de roles**: es dato personal (Ley 19.628). Para staging preferir una muestra o datos anonimizados: `ENV_FILE=.env.staging pnpm roles:import <ruta/muestra.csv>`. La carga web está deshabilitada en este modo.
+5. **Padrón de roles**: es dato personal (Ley 19.628). Para staging preferir una muestra o datos anonimizados: `ENV_FILE=.env.staging pnpm roles:import <ruta/muestra.csv>`. La carga web está deshabilitada en este modo. La dirección normalizada del padrón se recalcula con cada `pnpm db:migrate` (ver "Actualizar staging" más abajo); `ENV_FILE=.env.staging pnpm roles:renormalize` lo repite por separado si hiciera falta.
 
 La base de staging debe partir vacía: los adjuntos de archivo de una base restaurada desde producción no se pueden descargar aquí.
+
+**Actualizar staging**: Vercel no ejecuta migraciones. Cada vez que despliegues una versión nueva en Vercel, ejecuta también desde tu equipo, con el código de esa misma versión, `ENV_FILE=.env.staging pnpm db:migrate`: aplica las migraciones pendientes y recalcula la dirección normalizada del padrón, igual que el entrypoint de producción. Se puede repetir sin riesgo.
 
 ### 7.3 Proyecto en Vercel
 

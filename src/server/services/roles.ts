@@ -504,3 +504,77 @@ export async function importRoleCoordinates(
     missingFromPadron: missing.map((m) => m.id),
   };
 }
+
+// ---------- mantenimiento ----------
+
+/**
+ * Recalcula `address_norm`, `street_norm` y `house_number` de todos los roles desde `address`, con la
+ * `normalizeAddress` actual. `scripts/migrate.ts` la corre en cada despliegue, después de las migraciones: si la
+ * normalización cambió, el padrón guardado y las direcciones nuevas se normalizarían distinto y dejarían de calzar.
+ *
+ * Idempotente: solo escribe los roles cuyo resultado cambia y audita una vez (en la misma transacción) si hubo
+ * cambios. El UPDATE exige que `address` siga siendo la leída: si una importación del padrón la cambió entretanto,
+ * ese rol se salta (la importación ya guardó la normalización de la dirección nueva).
+ */
+export async function renormalizeRoleAddresses(
+  db: DbOrTx,
+  actor: Pick<Actor, 'userId' | 'email'>,
+): Promise<{ total: number; changed: number }> {
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select({
+        id: roles.id,
+        address: roles.address,
+        addressNorm: roles.addressNorm,
+        streetNorm: roles.streetNorm,
+        houseNumber: roles.houseNumber,
+      })
+      .from(roles)
+      .where(sql`${roles.address} IS NOT NULL`);
+    const pending = rows
+      .map((r) => {
+        const n = normalizeAddress(r.address);
+        return { id: r.id, address: r.address, addressNorm: n.addressNorm || null, streetNorm: n.streetNorm, houseNumber: n.houseNumber, before: r };
+      })
+      .filter(
+        (r) =>
+          r.addressNorm !== r.before.addressNorm ||
+          r.streetNorm !== r.before.streetNorm ||
+          r.houseNumber !== r.before.houseNumber,
+      );
+
+    let changed = 0;
+    for (let i = 0; i < pending.length; i += 1000) {
+      const values = sql.join(
+        pending
+          .slice(i, i + 1000)
+          .map((r) => sql`(${r.id}::varchar, ${r.address}::text, ${r.addressNorm}::text, ${r.streetNorm}::text, ${r.houseNumber}::int)`),
+        sql`, `,
+      );
+      const result = await tx.execute<{ id: string }>(sql`
+        UPDATE roles AS r
+        SET address_norm = v.address_norm, street_norm = v.street_norm, house_number = v.house_number, updated_at = now()
+        FROM (VALUES ${values}) AS v(id, address, address_norm, street_norm, house_number)
+        WHERE r.id = v.id AND r.address IS NOT DISTINCT FROM v.address
+        RETURNING r.id
+      `);
+      changed += result.length;
+    }
+
+    if (changed > 0) {
+      await audit.log(tx, {
+        actor,
+        action: 'UPDATE',
+        entityType: 'ROLE',
+        entityId: 'padron',
+        metadata: {
+          operation: 'renormalize',
+          description: 'Recálculo de la dirección normalizada del padrón',
+          totalRoles: rows.length,
+          changedRoles: changed,
+        },
+      });
+    }
+    return { total: rows.length, changed };
+  });
+}

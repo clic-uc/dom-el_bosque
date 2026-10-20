@@ -35,6 +35,55 @@ describe('normalizeAddress (§8.7)', () => {
     });
   });
 
+  it('conserva las calles que empiezan con N o Ñ', () => {
+    expect(normalizeAddress('Nueva Imperial 100')).toMatchObject({
+      streetNorm: 'nueva imperial',
+      houseNumber: 100,
+    });
+    expect(normalizeAddress('Los Nogales 55')).toMatchObject({ streetNorm: 'los nogales', houseNumber: 55 });
+    expect(normalizeAddress('Pasaje Ñuble 20')).toMatchObject({
+      streetNorm: 'pasaje nuble',
+      houseNumber: 20,
+    });
+    expect(normalizeAddress('Av. Nueva Ejemplo 100')).toMatchObject({ streetNorm: 'avenida nueva ejemplo', houseNumber: 100 });
+    expect(normalizeAddress('Pasaje Norte Ejemplo 50')).toMatchObject({ streetNorm: 'pasaje norte ejemplo', houseNumber: 50 });
+    expect(normalizeAddress('Calle Numancia 8')).toMatchObject({
+      streetNorm: 'calle numancia',
+      houseNumber: 8,
+    });
+  });
+
+  it('quita los marcadores de número antes del número', () => {
+    for (const s of [
+      'Riquelme N° 111',
+      'Riquelme Nº111',
+      'Riquelme Nro 111',
+      'Riquelme No. 111',
+      'Riquelme Num 111',
+      'Riquelme Número 111',
+      'Riquelme numero 111',
+      'Riquelme No 111',
+      'Riquelme #111',
+    ]) {
+      expect(normalizeAddress(s), s).toMatchObject({
+        streetNorm: 'riquelme',
+        houseNumber: 111,
+        addressNorm: 'riquelme 111',
+      });
+    }
+  });
+
+  it('pasajes con nombre «N-1»: la «N» queda en la calle y el primer número es la numeración (decisión fijada)', () => {
+    // Limitación aceptada: no se intenta reconocer «N-1» como nombre de pasaje. El padrón y la búsqueda pasan por la
+    // misma regla, así que calzan entre sí; si cambia, el despliegue recalcula el padrón (scripts/migrate.ts).
+    expect(normalizeAddress('Pasaje N-1 5')).toEqual({
+      addressNorm: 'pasaje n 1 5',
+      streetNorm: 'pasaje n',
+      houseNumber: 1,
+      complement: '5',
+    });
+  });
+
   it('dirección vacía', () => {
     expect(normalizeAddress('')).toEqual({ addressNorm: '', streetNorm: null, houseNumber: null, complement: null });
   });
