@@ -170,6 +170,13 @@ jobs:
       - name: Playwright
         run: pnpm test:e2e
 
+      # Con proxy, Next corta en 10 MB el cuerpo de las subidas y lo anota así en el log (las de e2e/uploads.spec.ts).
+      - name: La app no cortó el cuerpo de ninguna subida
+        run: |
+          if grep -n "Request body exceeded" app.log; then
+            echo "La app recibió una subida cortada: revisa el matcher de proxy.ts"; exit 1
+          fi
+
       - name: Logs de app y worker
         if: failure()
         run: |
