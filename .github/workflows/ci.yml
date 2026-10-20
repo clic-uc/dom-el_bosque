@@ -73,8 +73,8 @@ jobs:
         run: pnpm build:scripts && node dist-scripts/migrate.js
 
       - name: Docker build (imagen runner)
-        uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+        uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
         with:
           context: .
           target: runner
