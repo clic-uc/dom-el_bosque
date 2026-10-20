@@ -73,6 +73,17 @@ describe('normalizeAddress (§8.7)', () => {
     }
   });
 
+  it('pasajes con nombre «N-1»: la «N» queda en la calle y el primer número es la numeración (decisión fijada)', () => {
+    // Limitación aceptada: no se intenta reconocer «N-1» como nombre de pasaje. El padrón y la búsqueda pasan por la
+    // misma regla, así que calzan entre sí; si cambia, el despliegue recalcula el padrón (scripts/migrate.ts).
+    expect(normalizeAddress('Pasaje N-1 5')).toEqual({
+      addressNorm: 'pasaje n 1 5',
+      streetNorm: 'pasaje n',
+      houseNumber: 1,
+      complement: '5',
+    });
+  });
+
   it('dirección vacía', () => {
     expect(normalizeAddress('')).toEqual({ addressNorm: '', streetNorm: null, houseNumber: null, complement: null });
   });

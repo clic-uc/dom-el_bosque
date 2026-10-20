@@ -97,6 +97,8 @@ Registro de toda desviación o precisión respecto de `PROMPT.md`. Formato: fech
 
 **2026-10-05 — Scripts CLI en CommonJS con esbuild;** `next`, `next/*`, `pg-native` y `pino-pretty` externos. `NEXT_PUBLIC_*` se fijan como build args del Dockerfile; el comando canónico es `docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build`. `name: sigdom` en el compose para volúmenes predecibles.
 
+**2026-10-19 — El padrón se renormaliza en `scripts/migrate.ts`.** Tras aplicar las migraciones, `migrate` corre `renormalizeRoleAddresses`: recalcula `address_norm`/`street_norm`/`house_number` de los roles con la `normalizeAddress` del código desplegado, en una transacción, con UPDATE condicionado a que `address` no haya cambiado (una importación concurrente gana) y una sola entrada de auditoría (actor `cli`) si algo cambió. Va en `migrate` y no en `entrypoint.sh` para cubrir con el mismo paso la imagen de producción, `pnpm db:migrate` de staging (Vercel no migra) y la CI. Si falla, `migrate` sale con error como una migración fallida. `import-roles --renormalize` queda para repetirlo a mano.
+
 **2026-10-05 — Restore recrea la base** (DROP/CREATE WITH FORCE) en vez de `--clean`, por las extensiones PostGIS; dump `--no-owner --no-privileges`.
 
 **2026-10-05 — e2e y rate limit.** Cada contexto de Playwright envía un `X-Forwarded-For` 10.x.y.z aleatorio porque el límite de 5 intentos/min por IP bloqueaba la suite; Caddy sobrescribe esa cabecera en producción. CI levanta la app con `pnpm build && pnpm start`.
