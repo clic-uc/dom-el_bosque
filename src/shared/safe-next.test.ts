@@ -24,6 +24,18 @@ describe('safeNextPath', () => {
     }
   });
 
+  it('vuelve a /map si al normalizar los puntos el destino queda apuntando a otro sitio', () => {
+    for (const next of [
+      '/.//evil.com',
+      '/..//evil.com',
+      '/%2e//evil.com',
+      '/%2E%2E//evil.com',
+      '/a/..//evil.com/p?q#h',
+    ]) {
+      expect(safeNextPath(next), next).toBe('/map');
+    }
+  });
+
   it('vuelve a /map si el parámetro llega repetido', () => {
     expect(safeNextPath(['/help', '/x'])).toBe('/map');
   });
