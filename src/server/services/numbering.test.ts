@@ -8,6 +8,7 @@ import { auditLogs, layerCounters, records } from '@/db/schema';
 import type { Actor } from '@/server/auth/session';
 import { ValidationError } from '@/server/errors';
 import { createLayerSchema, type LayerFieldInput } from '@/shared/schemas/layers';
+import { raceWithOpenTransaction } from './__tests__/helpers';
 import * as layersSvc from './layers';
 import * as svc from './numbering';
 
@@ -133,5 +134,41 @@ describe('setNextNumber (solo admin, §7.12)', () => {
     await svc.setNextNumber(db, actor, layer.id, '', 11, 'alinear');
     await db.delete(records).where(sql`${records.id} = ${rec.id}`);
     expect(await svc.getCounters(db, layer.id)).toMatchObject([{ next: 11 }]);
+  });
+});
+
+describe('assignNumber / setNumber con transacciones concurrentes', () => {
+  it('assignNumber espera a quien está quitando el correlativo y no reescribe atributos viejos', async () => {
+    const layer = await makeLayer();
+    const rec = await insertRecord(layer.id, { direccion: 'Calle 1' });
+
+    // Otra transacción quita el campo correlativo (registros y capa) y aún no confirma.
+    const { waited, result } = await raceWithOpenTransaction(
+      async (conn) => {
+        await conn`UPDATE records SET attributes = attributes - 'n_permiso' WHERE layer_id = ${layer.id}`;
+        await conn`UPDATE layers SET fields = (SELECT jsonb_agg(f) FROM jsonb_array_elements(fields) f WHERE f->>'type' <> 'autonumber') WHERE id = ${layer.id}`;
+      },
+      () => svc.assignNumber(db, actor, rec.id),
+    );
+    expect(waited).toBe(true);
+    expect(result).toMatchObject({ ok: false, error: expect.any(ValidationError) });
+    const [row] = await db.select().from(records).where(sql`${records.id} = ${rec.id}`);
+    expect(row!.attributes).toEqual({ direccion: 'Calle 1' });
+    expect(row!.numberAssignedAt).toBeNull();
+  });
+
+  it('setNumber espera a quien está editando el registro y conserva sus cambios', async () => {
+    const layer = await makeLayer();
+    const rec = await insertRecord(layer.id, { direccion: 'Calle 1' });
+
+    const { waited, result } = await raceWithOpenTransaction(
+      (conn) =>
+        conn`UPDATE records SET attributes = attributes || '{"direccion": "Calle 2"}'::jsonb WHERE id = ${rec.id}`,
+      () => svc.setNumber(db, actor, rec.id, 5, 'corrección'),
+    );
+    expect(waited).toBe(true);
+    expect(result).toMatchObject({ ok: true, value: { number: 5 } });
+    const [row] = await db.select().from(records).where(sql`${records.id} = ${rec.id}`);
+    expect(row!.attributes).toEqual({ direccion: 'Calle 2', n_permiso: 5 });
   });
 });

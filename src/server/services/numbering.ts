@@ -53,6 +53,16 @@ async function lockCounter(tx: DbOrTx, layerId: number, fieldKey: string, period
   return Number(rows[0]?.last_value ?? 0);
 }
 
+/**
+ * Lee el registro con `FOR UPDATE` antes de mirar la capa y el contador. Así no se escribe
+ * `{ ...attributes, [campo]: n }` sobre atributos que otra transacción estaba cambiando (migración de campos,
+ * reversión de importación) y quien borre o migre registros de la capa espera a que el número quede asignado,
+ * y lo ve. Orden de locks: registro → contador, el mismo de `deleteLayer` (registros → contadores en cascada).
+ */
+function lockRecord(tx: DbOrTx, recordId: number) {
+  return tx.select().from(records).where(eq(records.id, recordId)).limit(1).for('update');
+}
+
 export async function previewNextNumber(db: DbOrTx, layerId: number, period?: string): Promise<LayerCounter | null> {
   const layer = await requireLayer(db, layerId);
   const field = getAutonumberField(layer);
@@ -70,7 +80,7 @@ export async function previewNextNumber(db: DbOrTx, layerId: number, period?: st
 
 export async function assignNumber(db: DbOrTx, actor: Actor, recordId: number): Promise<{ number: number; fieldKey: string }> {
   return db.transaction(async (tx) => {
-    const [rec] = await tx.select().from(records).where(eq(records.id, recordId)).limit(1);
+    const [rec] = await lockRecord(tx, recordId);
     if (!rec) throw new NotFoundError('El registro no existe o fue eliminado');
     const layer = await requireLayer(tx, rec.layerId);
     const field = getAutonumberField(layer);
@@ -118,7 +128,7 @@ export async function setNumber(
   reason: string,
 ): Promise<{ number: number | null }> {
   return db.transaction(async (tx) => {
-    const [rec] = await tx.select().from(records).where(eq(records.id, recordId)).limit(1);
+    const [rec] = await lockRecord(tx, recordId);
     if (!rec) throw new NotFoundError('El registro no existe o fue eliminado');
     const layer = await requireLayer(tx, rec.layerId);
     const field = getAutonumberField(layer);

@@ -9,6 +9,7 @@ import { auditLogs, layers, records, roles } from '@/db/schema';
 import type { Actor } from '@/server/auth/session';
 import { ValidationError } from '@/server/errors';
 import { createLayerSchema, type CreateLayerInput, type LayerField } from '@/shared/schemas/layers';
+import { raceWithOpenTransaction } from './__tests__/helpers';
 import * as svc from './layers';
 
 const actor: Actor = { userId: 't', email: 't@t', name: 'T', role: 'admin', rawRole: 'admin', mustChangePassword: false };
@@ -372,6 +373,30 @@ describe('updateLayer: correlativo con números asignados (§8.8)', () => {
       convertTypes: [],
     });
     expect(fieldsOf(after)).toEqual(['direccion']);
+  });
+
+  it('un número que se está asignando mientras se quita el correlativo entra en la cuenta y no se borra', async () => {
+    const layer = await makeLayer({
+      fields: svc.assignFieldKeys([{ label: 'N° Permiso', type: 'autonumber' }, { label: 'Dirección' }]),
+    });
+    const rec = await insertRecord(layer.id, { direccion: 'Calle 1' });
+
+    // Otra transacción le asigna número y aún no confirma: el editor tiene que esperarla y ver ese número.
+    const { waited, result } = await raceWithOpenTransaction(
+      (conn) =>
+        conn`UPDATE records SET attributes = attributes || '{"n_permiso": 1}'::jsonb, number_assigned_at = now() WHERE id = ${rec.id}`,
+      () =>
+        svc.updateLayer(db, editorActor, layer.id, {
+          fields: withoutField(layer, 'n_permiso'),
+          renames: [],
+          convertTypes: [],
+        }),
+    );
+    expect(waited).toBe(true);
+    expect(result).toMatchObject({ ok: false, error: { code: 'FORBIDDEN', details: { count: 1 } } });
+    const [row] = await db.select().from(records).where(eq(records.id, rec.id));
+    expect(row!.attributes.n_permiso).toBe(1);
+    expect(fieldsOf((await db.select().from(layers).where(eq(layers.id, layer.id)))[0]!)).toContain('n_permiso');
   });
 
   it('listLayers y getLayer cuentan los registros numerados', async () => {

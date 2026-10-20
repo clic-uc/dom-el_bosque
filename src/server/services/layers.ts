@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import type { DbOrTx } from '@/db/client';
 import { layers, records } from '@/db/schema';
 import type { FieldType } from '@/shared/constants';
@@ -270,13 +270,17 @@ export async function updateLayer(db: DbOrTx, actor: Actor, id: number, patch: U
         }
       }
       if (dropsAutonumber(before, afterFields, renameMap)) {
-        // Con lock: un número asignado mientras tanto no escapa a la cuenta.
-        const numbered = await tx
-          .select({ id: records.id, attributes: records.attributes })
+        // Se bloquean todos los registros de la capa y se filtra aquí, como en `deleteLayer`. Un filtro
+        // `number_assigned_at IS NOT NULL` en el SQL saltaría sin bloquearlo un registro que otra transacción
+        // está numerando (se evalúa contra la versión confirmada, sin número) y la migración le borraría el
+        // número sin pasar por esta cuenta. Sin filtro, el SELECT espera a esa transacción y ve el número.
+        const locked = await tx
+          .select({ id: records.id, numberAssignedAt: records.numberAssignedAt, attributes: records.attributes })
           .from(records)
-          .where(and(eq(records.layerId, id), isNotNull(records.numberAssignedAt)))
+          .where(eq(records.layerId, id))
           .orderBy(asc(records.id))
           .for('update');
+        const numbered = locked.filter((r) => r.numberAssignedAt);
         assertCanDropNumbers(actor, numbered.length, patch.reason, {
           forbidden: `${plural(numbered.length, 'registro tiene', 'registros tienen')} un número asignado por la plataforma. Solo un administrador puede quitar o cambiar el campo correlativo.`,
           reasonRequired: `Quitar o cambiar el campo correlativo borra el número de ${plural(numbered.length, 'registro', 'registros')}. Indica el motivo.`,

@@ -25,6 +25,11 @@ function chunk<T>(arr: T[], size: number): T[][] {
 /**
  * Registros que perderían su número al revertir (§8.8): los creados por la importación que hoy tienen número,
  * y los actualizados que hoy lo tienen y en el snapshot no. Se mira `number_assigned_at`, como `deleteRecord`.
+ *
+ * Con `lock` se bloquean todos los candidatos y se filtra aquí: con `number_assigned_at IS NOT NULL` en el SQL,
+ * un registro que otra transacción está numerando se evaluaría contra su versión confirmada (sin número) y
+ * quedaría fuera sin bloquearse, y la reversión le borraría el número sin motivo. Sin lock (la comprobación
+ * previa, solo para avisar antes de abrir la transacción) basta filtrar en el SQL.
  */
 async function numberLosses(
   db: DbOrTx,
@@ -36,12 +41,14 @@ async function numberLosses(
   const candidates = [...created, ...unnumberedBefore];
   const out: { id: number; attributes: Record<string, unknown> }[] = [];
   for (const part of chunk(candidates, 5000)) {
-    const q = db
-      .select({ id: records.id, attributes: records.attributes })
-      .from(records)
-      .where(and(inArray(records.id, part), isNotNull(records.numberAssignedAt)))
-      .orderBy(records.id);
-    out.push(...(lock ? await q.for('update') : await q));
+    const select = () =>
+      db
+        .select({ id: records.id, numberAssignedAt: records.numberAssignedAt, attributes: records.attributes })
+        .from(records);
+    const rows = lock
+      ? await select().where(inArray(records.id, part)).orderBy(records.id).for('update')
+      : await select().where(and(inArray(records.id, part), isNotNull(records.numberAssignedAt)));
+    for (const r of rows) if (r.numberAssignedAt) out.push({ id: r.id, attributes: r.attributes });
   }
   return out;
 }
@@ -123,7 +130,8 @@ export async function revertImport(
   let numberedRecords: NumberedRecordRef[] = [];
 
   await db.transaction(async (tx) => {
-    // De nuevo, con lock: un número asignado después de la primera comprobación no se pierde sin motivo.
+    // De nuevo, con lock: un número asignado después de la primera comprobación, o que se está asignando
+    // ahora mismo, entra en la cuenta y no se pierde sin motivo.
     const lockedLosses = await numberLosses(tx, created, updated, true);
     assertCanDropNumbers(actor, lockedLosses.length, input.reason, lossMessages(lockedLosses.length));
     if (lockedLosses.length)

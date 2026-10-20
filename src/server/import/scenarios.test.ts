@@ -27,6 +27,7 @@ import {
   editor,
   field,
   insertRecord,
+  raceWithOpenTransaction,
   setupDbSuite,
 } from '../services/__tests__/helpers';
 import { assignNumber, previewNextNumber } from '../services/numbering';
@@ -446,6 +447,34 @@ describe('Correlativos históricos (§8.5 paso 6 / §8.8)', () => {
         { id: created!.id, number: 2 },
       ]),
     });
+  });
+
+  it('revertir espera a un número que se está asignando en ese momento y no lo quita sin motivo', async () => {
+    const layer = await createLayer({
+      hasRole: true,
+      fields: [field('n_permiso', 'N° Permiso', 'autonumber', { options: { reset: 'never' } }), field('rut', 'Rut')],
+      uniqueKeys: ['rut'],
+    });
+    await createRole(roleOf(1), { lat: -33.56, lon: -70.66 });
+    const id = await uploadAndAnalyze(
+      layer.id,
+      'r.csv',
+      csvBuffer(['Rol', 'Rut'], [[roleOf(1), '2-7']]),
+      analyzeInput({ Rol: 'roleId', Rut: 'rut' }),
+    );
+    expect(await commit(id)).toMatchObject({ createdCount: 1 });
+    const [created] = await db.select().from(records).where(eq(records.layerId, layer.id));
+
+    // Otra transacción le asigna número al registro creado y aún no confirma.
+    const { waited, result } = await raceWithOpenTransaction(
+      (conn) =>
+        conn`UPDATE records SET attributes = attributes || '{"n_permiso": 1}'::jsonb, number_assigned_at = now() WHERE id = ${created!.id}`,
+      () => revertImport(db, editor, id, { force: true }),
+    );
+    expect(waited).toBe(true);
+    expect(result).toMatchObject({ ok: false, error: expect.any(ForbiddenError) });
+    const [kept] = await db.select().from(records).where(eq(records.id, created!.id));
+    expect(kept!.attributes.n_permiso).toBe(1);
   });
 
   it('al actualizar no pisa un número asignado por la plataforma', async () => {
