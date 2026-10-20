@@ -13,8 +13,10 @@ export function jsonify<T>(value: T): Jsonified<T> {
   return JSON.parse(JSON.stringify(value)) as Jsonified<T>;
 }
 
+/** Sin `fileKey`: la clave interna de la planilla en el storage no sale del servidor. */
 export function toImportItem(row: ImportRow, layerName?: string): ImportItem {
-  return { ...jsonify(row), ...(layerName !== undefined ? { layerName } : {}) };
+  const { fileKey: _fileKey, ...rest } = row;
+  return { ...jsonify(rest), ...(layerName !== undefined ? { layerName } : {}) };
 }
 
 export async function requireImport(db: DbOrTx, id: string): Promise<ImportRow> {

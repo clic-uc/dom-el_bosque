@@ -122,7 +122,7 @@ export async function getPolygon(db: DbOrTx, id: number): Promise<PolygonDetail>
     properties: row.properties ?? {},
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
-    attachments: attachments.map((a) => ({ ...a, createdAt: a.createdAt.toISOString() })),
+    attachments,
     counts: counts.map((c) => ({
       layerId: c.layer_id,
       layerName: c.layer_name,

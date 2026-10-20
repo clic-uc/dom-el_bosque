@@ -305,7 +305,9 @@ describe('Importación en dos fases: flujo completo con XLSX de 10k filas', () =
     expect(status.skippedCount).toBe(skipped);
     expect(status.updatedCount).toBe(1);
     expect(status.createdCount).toBe(N - failed - skipped - 1);
-    expect(status.fileKey).toBeNull();
+    expect(status).not.toHaveProperty('fileKey');
+    const [row] = await db.select({ fileKey: imports.fileKey }).from(imports).where(eq(imports.id, importId));
+    expect(row!.fileKey).toBeNull();
 
     const [cnt] = await db
       .select({ n: sql<number>`count(*)::int` })

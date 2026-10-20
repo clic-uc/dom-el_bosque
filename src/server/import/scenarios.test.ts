@@ -678,6 +678,7 @@ describe('Borradores: hoja, descartar, permisos y limpieza', () => {
     const list = await listImports(db, editor, { page: 1, pageSize: 10, layerId: layer.id });
     expect(list.total).toBe(1);
     expect(list.data[0]).toMatchObject({ id: source.importId, layerName: layer.name, status: 'DISCARDED' });
+    expect(list.data[0]).not.toHaveProperty('fileKey');
   });
 
   it('rechaza archivos que no son csv/xlsx y encabezados inválidos sin dejar basura en storage', async () => {

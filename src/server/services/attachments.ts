@@ -5,19 +5,26 @@ import { env } from '@/env';
 import { capabilities } from '@/shared/capabilities';
 import { attachmentAllowedExtensions, attachmentAllowedMimeTypes } from '@/shared/constants';
 import type { AttachmentEntityType, CreateLinkAttachmentInput } from '@/shared/schemas/attachments';
+import type { AttachmentDto, AttachmentRow } from '@/shared/types';
 import type { Actor } from '../auth/session';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
+import { detectContentType } from '../file-signature';
 import { storage } from '../storage';
 import * as audit from './audit';
 
-export type AttachmentRow = typeof attachments.$inferSelect;
+/** Lo que sale hacia el cliente: sin la clave interna del archivo en el storage. */
+function toAttachmentDto(row: AttachmentRow): AttachmentDto {
+  const { storageKey: _storageKey, ...dto } = row;
+  return { ...dto, createdAt: row.createdAt.toISOString() };
+}
 
-export async function listAttachments(db: DbOrTx, entityType: AttachmentEntityType, entityId: string): Promise<AttachmentRow[]> {
-  return db
+export async function listAttachments(db: DbOrTx, entityType: AttachmentEntityType, entityId: string): Promise<AttachmentDto[]> {
+  const rows = await db
     .select()
     .from(attachments)
     .where(and(eq(attachments.entityType, entityType), eq(attachments.entityId, entityId)))
     .orderBy(desc(attachments.createdAt));
+  return rows.map(toAttachmentDto);
 }
 
 async function assertEntityExists(db: DbOrTx, entityType: AttachmentEntityType, entityId: string): Promise<number | null> {
@@ -33,7 +40,7 @@ async function assertEntityExists(db: DbOrTx, entityType: AttachmentEntityType, 
   return null;
 }
 
-export async function addLink(db: DbOrTx, actor: Actor, input: CreateLinkAttachmentInput): Promise<AttachmentRow> {
+export async function addLink(db: DbOrTx, actor: Actor, input: CreateLinkAttachmentInput): Promise<AttachmentDto> {
   const layerId = await assertEntityExists(db, input.entityType, input.entityId);
   return db.transaction(async (tx) => {
     const [row] = await tx
@@ -55,7 +62,7 @@ export async function addLink(db: DbOrTx, actor: Actor, input: CreateLinkAttachm
       layerId,
       metadata: { entityType: input.entityType, entityId: input.entityId, kind: 'link', title: input.title },
     });
-    return row!;
+    return toAttachmentDto(row!);
   });
 }
 
@@ -81,6 +88,33 @@ export function validateAttachmentFile(file: FileInput): void {
   }
 }
 
+/** Cómo nombrar cada tipo en el mensaje de rechazo, en palabras de quien usa el sistema. */
+const kindLabel: Record<string, string> = {
+  pdf: 'un PDF válido',
+  doc: 'un documento de Word válido',
+  docx: 'un documento de Word válido',
+  xls: 'una planilla de Excel válida',
+  xlsx: 'una planilla de Excel válida',
+  ppt: 'una presentación de PowerPoint válida',
+  pptx: 'una presentación de PowerPoint válida',
+  dwg: 'un plano DWG válido',
+  dxf: 'un plano DXF válido',
+};
+
+/**
+ * Los primeros bytes deben corresponder a la extensión: un ejecutable renombrado `.pdf` no entra.
+ * Devuelve el tipo MIME detectado, que es el que se guarda (no el que declara el navegador).
+ */
+function contentTypeOrReject(fileName: string, bytes: Uint8Array): string {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  const mimeType = detectContentType(ext, bytes);
+  if (!mimeType) {
+    const label = Object.hasOwn(kindLabel, ext) ? kindLabel[ext] : 'una imagen válida';
+    throw new ValidationError(`Este archivo no es ${label}. Revisa que sea el archivo correcto e intenta de nuevo.`);
+  }
+  return mimeType;
+}
+
 /** Staging: sin disco persistente no se aceptan archivos (los enlaces sí). */
 function assertFileAttachmentsEnabled(): void {
   if (!capabilities.fileAttachments) throw new ConflictError(capabilities.notices.attachments ?? 'No se pueden subir archivos.');
@@ -91,13 +125,16 @@ export async function addFile(
   actor: Actor,
   input: { entityType: AttachmentEntityType; entityId: string; title: string },
   file: FileInput,
-): Promise<AttachmentRow> {
+): Promise<AttachmentDto> {
   assertFileAttachmentsEnabled();
   validateAttachmentFile(file);
   const layerId = await assertEntityExists(db, input.entityType, input.entityId);
+  const content = Buffer.from(await file.arrayBuffer());
+  // antes de guardar: un archivo rechazado no llega al storage
+  const mimeType = contentTypeOrReject(file.name, content);
   const id = crypto.randomUUID();
   const storageKey = `attachments/${id}`;
-  await storage.put(storageKey, Buffer.from(await file.arrayBuffer()));
+  await storage.put(storageKey, content);
   try {
     return await db.transaction(async (tx) => {
       const [row] = await tx
@@ -110,7 +147,7 @@ export async function addFile(
           title: input.title,
           storageKey,
           fileName: file.name,
-          mimeType: file.type || 'application/octet-stream',
+          mimeType,
           sizeBytes: file.size,
           createdBy: actor.userId,
         })
@@ -123,7 +160,7 @@ export async function addFile(
         layerId,
         metadata: { entityType: input.entityType, entityId: input.entityId, kind: 'file', title: input.title, fileName: file.name },
       });
-      return row!;
+      return toAttachmentDto(row!);
     });
   } catch (err) {
     await storage.delete(storageKey);

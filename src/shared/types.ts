@@ -112,7 +112,8 @@ export type RecordRow = InferSelectModel<typeof s.records>;
 export type RecordDto = Jsonified<Omit<RecordRow, 'geom'>>;
 
 export type AttachmentRow = InferSelectModel<typeof s.attachments>;
-export type AttachmentDto = Jsonified<AttachmentRow>;
+/** Sin `storageKey`: la clave interna del archivo no sale del servidor. */
+export type AttachmentDto = Jsonified<Omit<AttachmentRow, 'storageKey'>>;
 
 export type RecordDetail = RecordDto & {
   role: RoleDto | null;
@@ -157,7 +158,8 @@ export type PolygonStat = { polygonId: number; name: string | null; count: numbe
 
 // ---------- Importaciones ----------
 export type ImportRow = InferSelectModel<typeof s.imports>;
-export type ImportItem = Jsonified<ImportRow> & { layerName?: string };
+/** Sin `fileKey`: la clave interna de la planilla no sale del servidor. */
+export type ImportItem = Jsonified<Omit<ImportRow, 'fileKey'>> & { layerName?: string };
 
 export type ImportSource = {
   importId: string;
