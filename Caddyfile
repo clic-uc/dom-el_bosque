@@ -18,6 +18,8 @@
 	header {
 		# No revelar el servidor
 		-Server
+		# Solo HTTPS durante un año para este dominio (sin subdominios ni preload)
+		Strict-Transport-Security "max-age=31536000"
 	}
 
 	log {

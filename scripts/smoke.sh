@@ -3,6 +3,7 @@
 #
 #   ./scripts/smoke.sh [URL]                       # por defecto http://localhost:3000
 #   SMOKE_EMAIL=... SMOKE_PASSWORD=... ./scripts/smoke.sh https://sigdomelbosque.cl
+#   SMOKE_INSECURE=1 ./scripts/smoke.sh https://localhost   # acepta el certificado local de Caddy
 #
 # Comprueba: /api/health 200 · / 200 · /api/layers sin sesión 401 · inicio de sesión · /api/layers con sesión 200.
 # Si no se definen SMOKE_EMAIL y SMOKE_PASSWORD, se omiten los dos últimos pasos.
@@ -17,6 +18,11 @@ COOKIES="$(mktemp)"
 trap 'rm -f "$COOKIES"' EXIT
 
 FAILED=0
+
+# Con SMOKE_INSECURE=1, todas las llamadas aceptan un certificado no confiable (Caddy con SITE_ADDRESS=localhost).
+curl() {
+  if [ "${SMOKE_INSECURE:-}" = "1" ]; then command curl -k "$@"; else command curl "$@"; fi
+}
 ok()   { echo "  OK    $1"; }
 fail() { echo "  FALLA $1"; FAILED=1; }
 

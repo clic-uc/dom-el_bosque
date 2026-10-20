@@ -18,7 +18,8 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outdir = path.join(root, 'dist-scripts');
 
-const scripts = ['migrate', 'seed', 'geo-import', 'import-roles', 'create-admin', 'worker', 'e2e-seed-users'];
+// `e2e-seed-users` no va en la imagen: la CI lo corre con tsx.
+const scripts = ['migrate', 'seed', 'geo-import', 'import-roles', 'create-admin', 'worker'];
 
 await rm(outdir, { recursive: true, force: true });
 

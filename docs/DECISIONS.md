@@ -105,6 +105,8 @@ Registro de toda desviación o precisión respecto de `PROMPT.md`. Formato: fech
 
 **2026-10-05 — Ingreso con recarga completa.** `SignInForm` usa `window.location.assign` tras el sign-in: con `router.replace + router.refresh` el redirect de `/` ganaba y `?next=` se perdía.
 
+**2026-10-15 — Pila de producción más estrecha.** El servicio `db` deja `env_file` y recibe solo `POSTGRES_DB`, `POSTGRES_USER` y `POSTGRES_PASSWORD` por interpolación, con valores por defecto para que el respaldo del cron y los `exec` sin `--env-file` sigan funcionando sobre una base ya creada. La imagen ya no incluye `e2e-seed-users`, que crea usuarios con contraseña conocida. La CI lo corre con `tsx`. Caddy envía `Strict-Transport-Security: max-age=31536000`, sin `includeSubDomains` ni `preload`. `instrumentation-client.ts` activa `z.config({ jitless: true })` antes de que se cree cualquier esquema, para que la prueba de `eval` de Zod no dispare una violación de CSP. `scripts/smoke.sh` acepta `SMOKE_INSECURE=1` para el certificado local de Caddy.
+
 ## Fases 4–6 — Backend de registros, roles y operaciones
 
 **2026-10-05 — Los roles de origen de una operación deben existir;** los resultantes se crean si no existen. Un error de tipeo en el origen crearía un rol falso y lo dejaría no vigente. Un rol no vigente no puede ser origen de ninguna operación (ni de una modificación); el mensaje sugiere los resultantes o eliminar la operación que lo reemplazó.
