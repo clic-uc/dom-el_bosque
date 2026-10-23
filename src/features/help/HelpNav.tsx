@@ -40,7 +40,7 @@ function HelpNavList({ pages, activeSlug, onNavigate }: Props & { onNavigate?: (
         if (items.length === 0) return null;
         return (
           <div key={section.id}>
-            <p className="mb-1 px-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            <p className="mb-1 px-3 text-sm font-semibold text-foreground">
               {section.title}
             </p>
             <ul className="space-y-0.5">

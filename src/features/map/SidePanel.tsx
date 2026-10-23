@@ -72,7 +72,7 @@ export function PanelSection({ title, action, children, className }: { title: Re
   return (
     <section className={cn('space-y-3', className)}>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="flex items-center gap-1 text-sm font-semibold tracking-wide text-muted-foreground uppercase">{title}</h3>
+        <h3 className="flex items-center gap-1.5 text-lg font-semibold text-foreground">{title}</h3>
         {action}
       </div>
       {children}

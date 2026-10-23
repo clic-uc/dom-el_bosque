@@ -48,7 +48,7 @@ export const helpRegistry: Record<HelpSlug, HelpPageEntry> = {
     load: () => import('./mapa/mapas-de-calor.mdx'),
   },
   'mapa/poligonos': {
-    meta: { title: 'Polígonos', section: 'mapa', order: 5, draft: true },
+    meta: { title: 'Límites', section: 'mapa', order: 5, draft: true },
     load: () => import('./mapa/poligonos.mdx'),
   },
   'capas/crear-y-editar': {

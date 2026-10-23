@@ -199,6 +199,22 @@ export function RecordsTable({ layer, params, onPageChange, onPageSizeChange, on
         },
       });
     }
+    for (const f of editableFields) {
+      cols.push({
+        id: `attr:${f.key}`,
+        header: f.label,
+        size: /direcci[oó]n/i.test(f.label) ? 280 : 180,
+        cell: ({ row }) => {
+          const r = row.original;
+          if (editingId === r.id && draft) {
+            return <FieldInput field={f} compact value={draft.attributes[f.key] ?? ''} onChange={(v) => setDraft({ ...draft, attributes: { ...draft.attributes, [f.key]: v } })} aria-describedby={undefined} />;
+          }
+          const text = formatFieldValue(r.attributes[f.key], f.type);
+          return text ? <span title={text}>{text}</span> : <span className="text-muted-foreground">—</span>;
+        },
+      });
+    }
+    // Las coordenadas van después de los datos: sirven para corregir, no para reconocer el registro.
     for (const key of ['lat', 'lon'] as const) {
       cols.push({
         id: key,
@@ -225,21 +241,6 @@ export function RecordsTable({ layer, params, onPageChange, onPageSizeChange, on
         },
       });
     }
-    for (const f of editableFields) {
-      cols.push({
-        id: `attr:${f.key}`,
-        header: f.label,
-        size: 180,
-        cell: ({ row }) => {
-          const r = row.original;
-          if (editingId === r.id && draft) {
-            return <FieldInput field={f} compact value={draft.attributes[f.key] ?? ''} onChange={(v) => setDraft({ ...draft, attributes: { ...draft.attributes, [f.key]: v } })} aria-describedby={undefined} />;
-          }
-          const text = formatFieldValue(r.attributes[f.key], f.type);
-          return text ? <span title={text}>{text}</span> : <span className="text-muted-foreground">—</span>;
-        },
-      });
-    }
     cols.push({
       id: 'updatedAt',
       header: 'Actualizado',
@@ -250,7 +251,7 @@ export function RecordsTable({ layer, params, onPageChange, onPageSizeChange, on
       cols.push({
         id: 'actions',
         header: 'Acciones',
-        size: 300,
+        size: 290,
         enableResizing: false,
         cell: ({ row }) => {
           const r = row.original;
@@ -276,9 +277,14 @@ export function RecordsTable({ layer, params, onPageChange, onPageSizeChange, on
                       <MapPin aria-hidden /> Ver en mapa
                     </Button>
                   ) : null}
-                  <Button size="sm" variant="ghost" className="h-10 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setToDelete(r)} aria-label={`Eliminar registro ${r.id}`}>
-                    <Trash2 aria-hidden /> Eliminar
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="icon-lg" variant="ghost" className="size-10 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" onClick={() => setToDelete(r)} aria-label={`Eliminar registro ${r.id}`}>
+                        <Trash2 aria-hidden />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Eliminar registro</TooltipContent>
+                  </Tooltip>
                 </>
               )}
             </div>

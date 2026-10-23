@@ -19,7 +19,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4">
           <div>
-            <p className="text-xs font-semibold tracking-wide text-secondary-strong uppercase">Municipalidad de El Bosque</p>
+            <p className="text-sm font-medium text-muted-foreground">Municipalidad de El Bosque</p>
             <h1 className="text-2xl font-semibold text-primary-dark">Panel de administración</h1>
           </div>
           <div className="flex items-center gap-2">

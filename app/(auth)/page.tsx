@@ -16,7 +16,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
       <div className="w-full max-w-xl rounded-2xl border bg-white p-8 shadow-sm sm:p-10">
         <div className="flex flex-col items-center text-center">
           <Image src="/logo_el_bosque.png" alt="Municipalidad de El Bosque" width={96} height={96} priority />
-          <p className="mt-4 text-sm font-semibold tracking-wide text-secondary-strong uppercase">DOM El Bosque</p>
+          <p className="mt-4 text-base font-medium text-muted-foreground">DOM El Bosque</p>
           <h1 className="mt-1 text-2xl font-semibold text-primary-dark sm:text-3xl">
             Ingreso a plataforma georreferenciada
           </h1>

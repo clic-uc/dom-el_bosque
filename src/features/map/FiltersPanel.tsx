@@ -2,6 +2,7 @@
 
 import { Search } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
+import { EntityDialog } from '@/components/shared/entity-dialog';
 import { ErrorState, LoadingState } from '@/components/shared/states';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -12,7 +13,7 @@ import { errorMessage } from '@/lib/api';
 import { normalizeText } from '@/shared/text';
 import type { LayerField, LayerWithCount } from '@/shared/types';
 import { useFilterOptions } from './hooks';
-import { PanelSection, SidePanel } from './SidePanel';
+import { PanelSection } from './SidePanel';
 import type { LocationFilter, NumberFilter } from './url-state';
 
 type Props = {
@@ -101,7 +102,7 @@ function ValueList({
   );
 }
 
-/** Panel de filtros de la capa de trabajo (§10.2). Aplicar/Limpiar actualizan la URL. El contenedor lo monta con `key={layer.id}`. */
+/** Filtros de la capa de trabajo en un modal (§10.2). Aplicar/Quitar actualizan la URL. El contenedor lo monta con `key={layer.id}`. */
 export function FiltersPanel({ layer, filters, loc, num, onApply, onClose }: Props) {
   const id = useId();
   const options = useFilterOptions(layer.id);
@@ -128,17 +129,19 @@ export function FiltersPanel({ layer, filters, loc, num, onApply, onClose }: Pro
   }
 
   return (
-    <SidePanel
+    <EntityDialog
       title="Filtros"
-      subtitle={`Capa ${layer.name}`}
-      onClose={onClose}
-      width={400}
+      size="lg"
+      eyebrow={<p className="text-base text-muted-foreground">Capa {layer.name}</p>}
+      subtitle={<p className="text-base text-muted-foreground">Muestra solo los registros que cumplen todo lo que marques.</p>}
+      onRequestClose={onClose}
       data-testid="filters-panel"
       footer={
-        <div className="flex justify-between gap-2">
+        <div className="flex flex-wrap justify-between gap-2">
           <Button
             variant="outline"
             size="lg"
+            className="h-11"
             onClick={() => {
               setDraft({});
               setDraftLoc(null);
@@ -146,15 +149,20 @@ export function FiltersPanel({ layer, filters, loc, num, onApply, onClose }: Pro
               onApply({}, null, null);
             }}
           >
-            Limpiar
+            Quitar todos los filtros
           </Button>
-          <Button size="lg" onClick={() => onApply(clean(draft), draftLoc, draftNum)}>
-            Aplicar filtros
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="lg" className="h-11" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button size="lg" className="h-11" onClick={() => onApply(clean(draft), draftLoc, draftNum)}>
+              Aplicar filtros
+            </Button>
+          </div>
         </div>
       }
     >
-      <div className="space-y-6">
+      <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
         <PanelSection title="Ubicación">
           <RadioGroup
             value={draftLoc ?? 'all'}
@@ -239,9 +247,9 @@ export function FiltersPanel({ layer, filters, loc, num, onApply, onClose }: Pro
           })
         )}
         {!options.isPending && fields.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Esta capa no tiene campos para filtrar.</p>
+          <p className="text-base text-muted-foreground">Esta capa no tiene campos para filtrar.</p>
         ) : null}
       </div>
-    </SidePanel>
+    </EntityDialog>
   );
 }
