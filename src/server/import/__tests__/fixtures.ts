@@ -1,8 +1,10 @@
 /**
- * Fixtures en memoria para los tests de importación: CSV (UTF-8 o Windows-1252) y XLSX generado con exceljs
- * (con filas de título sobre los encabezados y una segunda hoja), más un `File` falso para `uploadImport`.
+ * Fixtures en memoria para los tests de importación: CSV (UTF-8 o Windows-1252), XLSX generado con exceljs
+ * (con filas de título sobre los encabezados y una segunda hoja), KML/KMZ como los exporta Google Earth Pro,
+ * más un `File` falso para `uploadImport`.
  */
 import ExcelJS from 'exceljs';
+import { strToU8, zipSync } from 'fflate';
 import iconv from 'iconv-lite';
 import type { UploadFile } from '../upload';
 
@@ -41,6 +43,44 @@ export async function xlsxBuffer(
     ws2.addRow(['Total', rows.length]);
   }
   return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+/** Un `Placemark` de Google Earth con un punto (`coordinates` = "lon,lat[,alt]"). */
+export function placemark(
+  name: string,
+  coordinates: string,
+  opts: { description?: string; extended?: string } = {},
+): string {
+  return [
+    '<Placemark>',
+    `<name>${name}</name>`,
+    opts.description ? `<description><![CDATA[${opts.description}]]></description>` : '',
+    '<LookAt><longitude>-70.67</longitude><latitude>-33.57</latitude><range>1558.9</range></LookAt>',
+    '<styleUrl>#msn_calzada</styleUrl>',
+    opts.extended ? `<ExtendedData>${opts.extended}</ExtendedData>` : '',
+    `<Point><gx:drawOrder>1</gx:drawOrder><coordinates>${coordinates}</coordinates></Point>`,
+    '</Placemark>',
+  ].join('\n');
+}
+
+export function kmlBuffer(body: string[]): Buffer {
+  return Buffer.from(
+    [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">',
+      '<Document><name>Capa.kmz</name>',
+      '<Style id="sn_calzada"><IconStyle><Icon><href>files/calzada.jpeg</href></Icon></IconStyle></Style>',
+      '<Folder><name>Capa</name>',
+      ...body,
+      '</Folder></Document></kml>',
+    ].join('\n'),
+    'utf8',
+  );
+}
+
+/** KMZ: `doc.kml` más el ícono en `files/`, como Google Earth. */
+export function kmzBuffer(body: string[]): Buffer {
+  return Buffer.from(zipSync({ 'doc.kml': kmlBuffer(body), 'files/calzada.jpeg': strToU8('jpeg') }));
 }
 
 export function fakeFile(name: string, buffer: Buffer): UploadFile {

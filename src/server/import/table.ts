@@ -18,6 +18,8 @@ export type ParsedTable = {
   /** Solo XLSX. */
   sheets?: string[];
   sheetName?: string;
+  /** Solo KML/KMZ: marcadores que no son un punto (áreas, líneas, sin ubicación) y no se importan. */
+  skippedFeatures?: number;
 };
 
 export type CellStringifier = (v: unknown) => string;

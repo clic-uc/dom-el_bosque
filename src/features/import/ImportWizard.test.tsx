@@ -6,6 +6,7 @@ import type { ImportSource, ImportStatusFull } from '@/shared/types';
 import { MappingStep, defaultOptions, mappingErrors } from './MappingStep';
 import { ResultStep } from './ResultStep';
 import { summaryText } from './ReviewStep';
+import { UploadStep } from './UploadStep';
 
 const fetchMock = vi.fn();
 
@@ -184,5 +185,36 @@ describe('ResultStep (§10.2 paso 4)', () => {
     expect(summaryText(status)).toBe(
       'Se crearán 120 registros, se actualizarán 30, se omitirán 5, fallarán 3, se eliminarán 2.',
     );
+  });
+});
+
+describe('UploadStep con archivos de Google Earth', () => {
+  const kmz: ImportSource = {
+    ...source,
+    fileType: 'kmz',
+    headerRow: 0,
+    delimiter: null,
+    headers: ['Nombre', 'Latitud', 'Longitud'],
+    totalRows: 2,
+    skippedFeatures: 6,
+    preview: [
+      { rowNumber: 2, values: { Nombre: 'TPG1000', Latitud: '-33.5846', Longitud: '-70.6655' } },
+      { rowNumber: 3, values: { Nombre: 'TPG1001', Latitud: '-33.5844', Longitud: '-70.6666' } },
+    ],
+  };
+
+  it('acepta .kml y .kmz, no pide fila de encabezados y avisa los elementos que no son puntos', () => {
+    const { container } = wrap(<UploadStep layerId={7} source={kmz} onSource={() => {}} onNext={() => {}} />);
+    expect(container.querySelector('input[type="file"]')).toHaveAttribute('accept', '.csv,.xlsx,.kml,.kmz');
+    expect(screen.queryByLabelText('Fila con los nombres de las columnas')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Separador de columnas')).not.toBeInTheDocument();
+    expect(screen.getByText(/Cada punto del archivo de Google Earth es una fila/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '6 elementos del archivo no son puntos (por ejemplo, áreas o líneas) y no se importarán.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/El archivo tiene 2 puntos\./)).toBeInTheDocument();
+    expect(screen.getByText('TPG1000')).toBeInTheDocument();
   });
 });

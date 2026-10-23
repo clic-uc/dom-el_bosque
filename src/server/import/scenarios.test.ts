@@ -1,7 +1,8 @@
 /**
  * Escenarios puntuales de importación contra BD real (fase 7): reemplazo completo con adjuntos/correlativos y
  * reversión con ids originales, correlativos históricos, rol por dirección exacta, rol no vigente, CSV Windows-1252,
- * cola de geocodificación externa con proveedor falso, descartar, cambiar hoja y limpieza de borradores vencidos.
+ * cola de geocodificación externa con proveedor falso, descartar, cambiar hoja, limpieza de borradores vencidos y
+ * archivos de Google Earth (KML/KMZ).
  */
 import { and, asc, eq, sql } from 'drizzle-orm';
 import Papa from 'papaparse';
@@ -33,7 +34,16 @@ import {
 } from '../services/__tests__/helpers';
 import { assignNumber, previewNextNumber } from '../services/numbering';
 import { storage } from '../storage';
-import { csvBuffer, fakeFile, roleOf, xlsxBuffer, type Cell } from './__tests__/fixtures';
+import {
+  csvBuffer,
+  fakeFile,
+  kmlBuffer,
+  kmzBuffer,
+  placemark,
+  roleOf,
+  xlsxBuffer,
+  type Cell,
+} from './__tests__/fixtures';
 import { runAnalyze, startAnalyze } from './analyze';
 import { cleanupExpiredImports } from './cleanup';
 import { runCommit, startCommit } from './commit';
@@ -545,7 +555,10 @@ describe('Correlativos históricos (§8.5 paso 6 / §8.8)', () => {
   it('revertir espera a un número que se está asignando en ese momento y no lo quita sin motivo', async () => {
     const layer = await createLayer({
       hasRole: true,
-      fields: [field('n_permiso', 'N° Permiso', 'autonumber', { options: { reset: 'never' } }), field('rut', 'Rut')],
+      fields: [
+        field('n_permiso', 'N° Permiso', 'autonumber', { options: { reset: 'never' } }),
+        field('rut', 'Rut'),
+      ],
       uniqueKeys: ['rut'],
     });
     await createRole(roleOf(1), { lat: -33.56, lon: -70.66 });
@@ -837,11 +850,14 @@ describe('Borradores: hoja, descartar, permisos y limpieza', () => {
     expect(list.data[0]).not.toHaveProperty('fileKey');
   });
 
-  it('rechaza archivos que no son csv/xlsx y encabezados inválidos sin dejar basura en storage', async () => {
+  it('rechaza archivos que no son csv/xlsx/kml/kmz y encabezados inválidos sin dejar basura en storage', async () => {
     const layer = await createLayer({ hasRole: true, fields: baseFields() });
     await expect(uploadImport(db, editor, layer.id, fakeFile('a.pdf', Buffer.from('x')))).rejects.toThrow(
-      /\.csv o \.xlsx/,
+      /\.csv o \.xlsx \(Excel\) y archivos \.kml o \.kmz/,
     );
+    await expect(
+      uploadImport(db, editor, layer.id, fakeFile('a.kmz', Buffer.from('no es zip'))),
+    ).rejects.toThrow(/No pudimos abrir el archivo \.kmz/);
     await expect(
       uploadImport(db, editor, layer.id, fakeFile('a.csv', Buffer.from('Rol;Rol\n1;2\n'))),
     ).rejects.toThrow(/Fila 1: Hay encabezados repetidos: "Rol"/);
@@ -850,5 +866,75 @@ describe('Borradores: hoja, descartar, permisos y limpieza', () => {
     ).rejects.toThrow(/columna B no tiene nombre/);
     const [cnt] = await db.select({ n: sql<number>`count(*)::int` }).from(imports);
     expect(Number(cnt!.n)).toBe(0);
+  });
+});
+
+describe('Google Earth (KML/KMZ)', () => {
+  it('importa cada punto con su nombre y coordenadas; el único campo de texto se sugiere para el nombre', async () => {
+    const layer = await createLayer({
+      hasRole: false,
+      fields: [field('paradero', 'Paradero'), field('anio', 'Año', 'number')],
+    });
+    const sector =
+      '<Placemark><name>SECTOR 1</name><Polygon><outerBoundaryIs><LinearRing><coordinates>-70.66,-33.58,0 -70.67,-33.57,0 -70.66,-33.58,0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>';
+    const buf = kmzBuffer([
+      sector,
+      placemark('TPG1000', '-70.66550573723482,-33.58468021108754,0'),
+      placemark('TPG1001', '-70.66668489445365,-33.5844256679926,0'),
+    ]);
+    const source = await uploadImport(db, editor, layer.id, fakeFile('Paraderos.kmz', buf));
+    expect(source).toMatchObject({ fileType: 'kmz', headerRow: 0, totalRows: 2, skippedFeatures: 1 });
+    expect(source.headers).toEqual(['Nombre', 'Latitud', 'Longitud']);
+    expect(source.preview.map((r) => r.rowNumber)).toEqual([2, 3]);
+    expect(source.suggestedMapping).toEqual({ Nombre: 'paradero', Latitud: 'lat', Longitud: 'lon' });
+    await expect(patchImportSource(db, editor, source.importId, { headerRow: 2 })).rejects.toThrow(
+      /Google Earth no tienen hojas/,
+    );
+
+    await startAnalyze(db, editor, source.importId, analyzeInput(source.suggestedMapping));
+    await runAnalyze(db, source.importId);
+    const done = await commit(source.importId);
+    expect(done).toMatchObject({ status: 'COMPLETED', createdCount: 2, failedCount: 0 });
+
+    const created = await db
+      .select()
+      .from(records)
+      .where(eq(records.layerId, layer.id))
+      .orderBy(asc(records.id));
+    expect(created.map((r) => [r.attributes, r.lat, r.lon, r.coordsSource])).toEqual([
+      [{ paradero: 'TPG1000' }, -33.58468, -70.665506, 'own'],
+      [{ paradero: 'TPG1001' }, -33.584426, -70.666685, 'own'],
+    ]);
+  });
+
+  it('en capas con rol toma el rol de los datos extendidos del KML', async () => {
+    const layer = await createLayer({
+      hasRole: true,
+      fields: [field('nombre', 'Nombre'), field('obs', 'Observaciones')],
+    });
+    await createRole(roleOf(7), { lat: -33.56, lon: -70.66 });
+    const buf = kmlBuffer([
+      placemark('Obra 1', '-70.661,-33.561,0', {
+        extended: `<Data name="Rol"><value>${roleOf(7)}</value></Data>`,
+      }),
+    ]);
+    const source = await uploadImport(db, editor, layer.id, fakeFile('obras.kml', buf));
+    expect(source.fileType).toBe('kml');
+    expect(source.suggestedMapping).toEqual({
+      Nombre: 'nombre',
+      Rol: 'roleId',
+      Latitud: 'lat',
+      Longitud: 'lon',
+    });
+
+    await startAnalyze(db, editor, source.importId, analyzeInput(source.suggestedMapping));
+    await runAnalyze(db, source.importId);
+    const rows = (await listRows(db, source.importId, { page: 1, pageSize: 50 })).data;
+    expect(rows[0]!.parsed).toMatchObject({
+      roleId: roleOf(7),
+      lat: -33.561,
+      lon: -70.661,
+      coordsSource: 'own',
+    });
   });
 });

@@ -2,6 +2,7 @@ import type { imports } from '@/db/schema';
 import { ConflictError } from '../errors';
 import { storage } from '../storage';
 import { parseCsv } from './parse-csv';
+import { parseKml, parseKmz } from './parse-kml';
 import { parseXlsx } from './parse-xlsx';
 import type { ParsedTable } from './table';
 
@@ -40,5 +41,7 @@ export async function parseImportBuffer(
   if (imp.fileType === 'xlsx') {
     return parseXlsx(buffer, { sheetName: overrides.sheetName ?? imp.sheetName, headerRow });
   }
+  if (imp.fileType === 'kml') return parseKml(buffer);
+  if (imp.fileType === 'kmz') return parseKmz(buffer);
   return parseCsv(buffer, { delimiter: overrides.delimiter ?? imp.delimiter, headerRow });
 }

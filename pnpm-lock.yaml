@@ -41,6 +41,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.3
         version: 0.45.3(@opentelemetry/api@1.9.1)(kysely@0.29.6)(pg@8.23.1)(postgres@3.4.9)
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       iconv-lite:
         specifier: ^0.7.3
         version: 0.7.3
@@ -86,6 +89,9 @@ importers:
       read-excel-file:
         specifier: ^9.3.10
         version: 9.3.10
+      saxen:
+        specifier: ^11.2.0
+        version: 11.2.0
       sonner:
         specifier: ^2.0.8
         version: 2.0.8(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

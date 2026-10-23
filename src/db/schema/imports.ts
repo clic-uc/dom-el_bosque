@@ -42,10 +42,10 @@ export const imports = pgTable(
     userId: varchar('user_id', { length: 64 }).notNull(),
     userEmail: varchar('user_email', { length: 255 }),
     fileName: varchar('file_name', { length: 500 }).notNull(),
-    fileType: varchar('file_type', { length: 4 }).notNull(), // 'csv' | 'xlsx'
+    fileType: varchar('file_type', { length: 4 }).notNull(), // 'csv' | 'xlsx' | 'kml' | 'kmz'
     fileKey: text('file_key'), // archivo en storage; se borra al completar, descartar o vencer
     sheetName: varchar('sheet_name', { length: 120 }), // solo xlsx
-    headerRow: integer('header_row').notNull().default(1),
+    headerRow: integer('header_row').notNull().default(1), // 0 en kml/kmz (sin encabezados)
     delimiter: varchar('delimiter', { length: 1 }), // solo csv
     columnMapping: jsonb('column_mapping').$type<Record<string, string | null>>().notNull().default({}),
     rowFrom: integer('row_from'),
