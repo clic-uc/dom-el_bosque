@@ -7,7 +7,8 @@
    Los usuarios tienen baja habilidad digital: tipografía base 16px, controles grandes,
    foco visible siempre y contraste AA en todos los pares color/texto. */
 @theme inline {
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-lexend), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-atkinson-mono), ui-monospace, monospace;
 
   --color-primary: #73308a;
   --color-primary-light: #8a42a3;

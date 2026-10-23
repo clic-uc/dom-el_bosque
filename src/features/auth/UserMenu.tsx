@@ -42,8 +42,8 @@ export function UserMenu() {
                 {initials(actor.name)}
               </AvatarFallback>
             </Avatar>
-            <span className="hidden max-w-40 truncate text-sm font-medium md:inline">{actor.name}</span>
-            <RoleBadge role={actor.role} className="hidden md:inline-flex" />
+            <span className="hidden max-w-40 truncate text-sm font-medium 2xl:inline">{actor.name}</span>
+            <RoleBadge role={actor.role} className="hidden 2xl:inline-flex" />
             <ChevronDown className="size-4 text-muted-foreground" aria-hidden />
           </Button>
         </DropdownMenuTrigger>

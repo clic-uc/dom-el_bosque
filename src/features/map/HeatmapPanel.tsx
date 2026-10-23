@@ -1,6 +1,6 @@
 'use client';
 
-import { Flame } from 'lucide-react';
+import { ChevronDown, Flame } from 'lucide-react';
 import { useId } from 'react';
 import { LayerIcon } from '@/components/shared/layer-icon';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -35,7 +35,7 @@ function fieldLabel(layer: LayerWithCount): string | null {
   return layer.fields.find((f) => f.key === layer.heatmapFieldKey)?.label ?? layer.heatmapFieldKey;
 }
 
-/** Popover "Mapa de calor" desde el sidebar (§10.2). */
+/** Botón flotante "Mapa de calor" sobre el mapa, con su popover de ajustes (§10.2). */
 export function HeatmapPanel({ visibleLayers, heat, heatLayers, settings, onChangeHeat, onChangeSettings, className }: Props) {
   const id = useId();
   const active = heat !== null;
@@ -58,13 +58,13 @@ export function HeatmapPanel({ visibleLayers, heat, heatLayers, settings, onChan
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant={active ? 'secondary' : 'ghost'} size="lg" className={cn('h-11 w-full justify-start gap-2 px-3 text-base', className)} aria-pressed={active}>
+        <Button variant={active ? 'secondary' : 'outline'} size="lg" className={cn('h-11 gap-2 px-4 text-base shadow-md', className)} aria-pressed={active}>
           <Flame className={cn('size-5', active ? 'text-orange-600' : 'text-muted-foreground')} aria-hidden />
-          Mapa de calor
-          {active ? <span className="ml-auto text-xs font-semibold uppercase">{mode === 'density' ? 'Densidad' : 'Valor'}</span> : null}
+          {active ? `Mapa de calor: ${mode === 'density' ? 'densidad' : 'valor'}` : 'Mapa de calor'}
+          <ChevronDown className="size-4" aria-hidden />
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="right" align="start" className="z-(--z-index-toolbar) w-96 space-y-4 p-4">
+      <PopoverContent side="bottom" align="start" className="z-(--z-index-toolbar) max-h-[70dvh] w-96 max-w-[calc(100vw-2rem)] space-y-4 overflow-y-auto p-4">
         <div className="flex items-center justify-between gap-2">
           <Label htmlFor={`${id}-toggle`} className="text-base font-semibold">
             Mapa de calor

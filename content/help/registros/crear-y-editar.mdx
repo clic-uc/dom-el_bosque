@@ -3,16 +3,18 @@ import { DraftBanner } from '@/features/help/DraftBanner';
 export const meta = { title: 'Crear y editar registros', section: 'registros', order: 1, draft: true };
 
 Un registro es una fila de una capa: un permiso, una recepción, un tramo de calzada. Los editores pueden
-crearlos uno a uno desde el mapa y modificarlos en el panel lateral o directamente en la tabla.
+crearlos uno a uno desde el mapa y modificarlos en la ficha del registro o directamente en la tabla.
 
 <DraftBanner />
 
 ## Qué se explicará aquí
 
-- Crear un registro desde el botón **Nuevo registro** y elegir la capa.
+- Crear un registro desde el botón **Crear registro** y elegir la capa.
 - Las tres formas de ubicarlo: con el **rol** (toma la ubicación del padrón), con una **dirección** o haciendo
   **clic en el mapa**.
-- Editar en el **panel lateral** o en la **tabla** (doble clic en una celda), y cómo se guardan los cambios.
+- Editar en la **ficha del registro** (botón **Editar datos** y luego **Guardar cambios**) o en la **tabla**
+  (botón **Editar** de la fila), y cómo se guardan los cambios.
+- **Ver en el mapa** desde la ficha: el registro queda marcado y se vuelve a la ficha con **Volver a la ficha**.
 - Agregar **comentarios** y **adjuntos** (archivos o enlaces) a un registro.
 - El mensaje de **registro repetido** cuando ya existe uno con el mismo rol y los mismos
   [campos únicos](/help/capas/campos-unicos), y el botón para abrir el existente.

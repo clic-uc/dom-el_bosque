@@ -246,7 +246,7 @@ export function RecordSearch({
           >
             {groups.map((g) => (
               <div key={g.title} role="group" aria-label={g.title}>
-                <p className="px-3 pt-2 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                <p className="px-3 pt-2 pb-1 text-sm font-semibold text-foreground">
                   {g.title}
                 </p>
                 {g.items.map(({ item, index }) => {

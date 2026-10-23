@@ -65,7 +65,7 @@ export function ResultStep({ status, onClose, onCompleted }: Props) {
       <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((c) => (
           <div key={c.label} className={`rounded-lg border px-4 py-3 ${c.tone}`}>
-            <dt className="text-sm font-medium uppercase tracking-wide">{c.label}</dt>
+            <dt className="text-base font-medium">{c.label}</dt>
             <dd className="text-3xl font-semibold tabular-nums">{fmt(c.value)}</dd>
           </div>
         ))}

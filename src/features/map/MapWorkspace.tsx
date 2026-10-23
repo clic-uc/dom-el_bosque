@@ -8,8 +8,9 @@ import { ExportDialog } from '@/features/export/ExportDialog';
 import { ImportWizard } from '@/features/import/ImportWizard';
 import { LayerFormDialog } from '@/features/layers/LayerFormDialog';
 import { CreateRecordDialog } from '@/features/records/CreateRecordDialog';
+import { RecordDialog, RecordPeekBar } from '@/features/records/RecordDialog';
 import { RecordsTable } from '@/features/records/RecordsTable';
-import { RoleSheet } from '@/features/roles/RoleSheet';
+import { RoleDialog } from '@/features/roles/RoleDialog';
 import { cn } from '@/lib/utils';
 import type { Department } from '@/shared/constants';
 import type {
@@ -19,6 +20,7 @@ import type {
   RecordListItem,
   RoleRecordItem,
 } from '@/shared/types';
+import { ActiveFilters } from './ActiveFilters';
 import { CoordinateUpdateDialog, type CoordinateChangeRequest } from './CoordinateUpdateDialog';
 import { FiltersPanel } from './FiltersPanel';
 import { DEFAULT_HEAT_SETTINGS, type HeatSettings } from './HeatmapPanel';
@@ -30,12 +32,15 @@ import {
   type RecordsPageParams,
 } from './hooks';
 import { LayersSidebar } from './LayersSidebar';
+import { MapControls } from './MapControls';
 import { MapController, MapControllerContext } from './map-controller';
 import { MapView, type TempMarker } from './MapView';
 import { PolygonSidePanel } from './PolygonSidePanel';
-import { RecordSidePanel } from './RecordSidePanel';
 import { Toolbar } from './Toolbar';
 import { countActiveFilters, useMapUrlState } from './url-state';
+
+/** Ficha desde la que se llegó a la actual, para el botón "Volver". */
+type BackTarget = { kind: 'record'; id: number } | { kind: 'role'; id: string };
 
 type LayerDialogState =
   { mode: 'create'; department?: Department } | { mode: 'edit'; layer: LayerWithCount } | null;
@@ -72,8 +77,16 @@ function MapWorkspaceInner() {
   const [picked, setPicked] = useState<{ lat: number; lon: number; at: number } | null>(null);
   const [coordRequest, setCoordRequest] = useState<CoordinateChangeRequest | null>(null);
   const [tempMarker, setTempMarker] = useState<TempMarker | null>(null);
+  /** Registro cuya ficha se cerró con "Ver en el mapa": sigue seleccionado y se muestra el aviso para volver. */
+  const [peekRecord, setPeekRecord] = useState<number | null>(null);
+  const [back, setBack] = useState<BackTarget | null>(null);
 
   const workingLayer = useMemo(() => layers.find((l) => l.id === state.layer) ?? null, [layers, state.layer]);
+  /** Capa de trabajo y superpuestas, en ese orden (las que puede usar el mapa de calor). */
+  const visibleLayers = useMemo(() => {
+    const overlays = state.overlays.map((id) => layers.find((l) => l.id === id)).filter((l): l is LayerWithCount => !!l);
+    return workingLayer ? [workingLayer, ...overlays] : overlays;
+  }, [layers, workingLayer, state.overlays]);
 
   // Sin capa en la URL (o con una que ya no existe): la primera con registros, o la primera.
   const initialized = useRef(false);
@@ -140,6 +153,23 @@ function MapWorkspaceInner() {
     [url, controller],
   );
 
+  // Toda apertura de ficha pasa por aquí: muestra la ficha (aunque estuviera en "Ver en el mapa") y olvida el "Volver".
+  const openRecord = useCallback(
+    (recordId: number) => {
+      setPeekRecord(null);
+      setBack(null);
+      url.openRecord(recordId);
+    },
+    [url],
+  );
+  const openRole = useCallback(
+    (roleId: string) => {
+      setBack(null);
+      url.openRole(roleId);
+    },
+    [url],
+  );
+
   const flyToRecord = useCallback(
     (lat: number | null, lon: number | null) => {
       if (lat !== null && lon !== null) controller.flyTo({ lat, lon, zoom: 18 });
@@ -150,9 +180,9 @@ function MapWorkspaceInner() {
   const onSelectRecord = useCallback(
     (record: RecordListItem) => {
       flyToRecord(record.lat, record.lon);
-      url.openRecord(record.id);
+      openRecord(record.id);
     },
-    [flyToRecord, url],
+    [flyToRecord, openRecord],
   );
 
   const onGoToAddress = useCallback(
@@ -168,18 +198,19 @@ function MapWorkspaceInner() {
     (record: RoleRecordItem, layerId: number) => {
       if (layerId !== state.layer && !state.overlays.includes(layerId)) url.toggleOverlay(layerId);
       flyToRecord(record.lat, record.lon);
-      url.openRecord(record.id);
+      openRecord(record.id);
+      if (state.role !== null) setBack({ kind: 'role', id: state.role });
     },
-    [state.layer, state.overlays, url, flyToRecord],
+    [state.layer, state.overlays, state.role, url, flyToRecord, openRecord],
   );
 
   const onWorkInLayer = useCallback(
     (layerId: number) => {
       const current = state.record;
       url.setWorkingLayer(layerId);
-      if (current !== null) url.openRecord(current);
+      if (current !== null) openRecord(current);
     },
-    [state.record, url],
+    [state.record, url, openRecord],
   );
 
   const onCreated = useCallback(
@@ -187,10 +218,10 @@ function MapWorkspaceInner() {
       if (record.layerId !== state.layer && !state.overlays.includes(record.layerId))
         url.toggleOverlay(record.layerId);
       flyToRecord(record.lat, record.lon);
-      url.openRecord(record.id);
+      openRecord(record.id);
       if (state.view === 'table') url.setView('map');
     },
-    [state.layer, state.overlays, state.view, url, flyToRecord],
+    [state.layer, state.overlays, state.view, url, flyToRecord, openRecord],
   );
 
   const onPick = useCallback((lat: number, lon: number) => {
@@ -214,45 +245,29 @@ function MapWorkspaceInner() {
     (record: RecordListItem) => {
       url.setView('map');
       flyToRecord(record.lat, record.lon);
-      url.openRecord(record.id);
+      openRecord(record.id);
+      // Desde la tabla se quiere ver el punto: queda seleccionado con el aviso para abrir la ficha.
+      setPeekRecord(record.id);
     },
-    [url, flyToRecord],
+    [url, flyToRecord, openRecord],
   );
 
   const onOpenPolygon = useCallback((id: number) => url.openPolygon(id), [url]);
-  const onOpenRecord = useCallback((id: number) => url.openRecord(id), [url]);
+  const onOpenRecord = openRecord;
 
   const activeFilters = countActiveFilters(state);
 
+  const recordPeeked = state.record !== null && peekRecord === state.record;
+
+  const onBack = back
+    ? {
+        label: back.kind === 'role' ? `Volver a la ficha del rol ${back.id}` : 'Volver a la ficha del registro',
+        onBack: () => (back.kind === 'role' ? openRole(back.id) : openRecord(back.id)),
+      }
+    : null;
+
   const rightPanel =
-    state.record !== null ? (
-      <RecordSidePanel
-        key={state.record}
-        recordId={state.record}
-        workingLayerId={state.layer}
-        onClose={url.closePanel}
-        onOpenRole={url.openRole}
-        onOpenRecord={onOpenRecord}
-        onWorkInLayer={onWorkInLayer}
-        onCenter={(lat, lon) => {
-          if (state.view === 'table') url.setView('map');
-          controller.flyTo({ lat, lon, zoom: 18 });
-        }}
-      />
-    ) : state.role !== null ? (
-      <RoleSheet
-        key={state.role}
-        roleId={state.role}
-        workingLayerId={state.layer}
-        onClose={url.closePanel}
-        onOpenRole={url.openRole}
-        onOpenRecord={onOpenRecordFromRole}
-        onViewOnMap={(lat, lon) => {
-          if (state.view === 'table') url.setView('map');
-          controller.flyTo({ lat, lon, zoom: 18 });
-        }}
-      />
-    ) : state.polygon !== null ? (
+    state.polygon !== null ? (
       <PolygonSidePanel
         key={state.polygon}
         polygonId={state.polygon}
@@ -280,18 +295,11 @@ function MapWorkspaceInner() {
           onRetry={() => void layersQuery.refetch()}
           workingLayerId={state.layer}
           overlayLayerIds={state.overlays}
-          polys={state.polys}
-          heat={state.heat}
-          heatLayers={state.heatLayers}
-          heatSettings={heatSettings}
           onSelectWorking={(id) => {
             selectWorking(id);
             setMobileSidebar(false);
           }}
           onToggleOverlay={url.toggleOverlay}
-          onTogglePoly={url.togglePolygonKind}
-          onChangeHeat={url.setHeat}
-          onChangeHeatSettings={setHeatSettings}
           onCreateLayer={(department) => setLayerDialog({ mode: 'create', department })}
           onEditLayer={(layer) => setLayerDialog({ mode: 'edit', layer })}
           onCollapse={() => setSidebarCollapsed(true)}
@@ -309,7 +317,7 @@ function MapWorkspaceInner() {
             onToggleFilters={() => setFiltersOpen((o) => !o)}
             onQueryChange={url.setQuery}
             onSelectRecord={onSelectRecord}
-            onSelectRole={url.openRole}
+            onSelectRole={openRole}
             onGoToAddress={onGoToAddress}
             onImport={() => workingLayer && setImportLayerId(workingLayer.id)}
             onExport={() => setExportOpen(true)}
@@ -319,6 +327,9 @@ function MapWorkspaceInner() {
             }}
             onViewChange={url.setView}
           />
+          {workingLayer ? (
+            <ActiveFilters layer={workingLayer} filters={state.filters} loc={state.loc} num={state.num} onChange={url.setFilters} />
+          ) : null}
 
           <div className="flex min-h-0 flex-1">
             <main
@@ -346,6 +357,21 @@ function MapWorkspaceInner() {
                   onRequestCoordinateChange={onRequestCoordinateChange}
                 />
               </div>
+              {state.view === 'map' && !pickActive ? (
+                <MapControls
+                  visibleLayers={visibleLayers}
+                  polys={state.polys}
+                  heat={state.heat}
+                  heatLayers={state.heatLayers}
+                  heatSettings={heatSettings}
+                  onTogglePoly={url.togglePolygonKind}
+                  onChangeHeat={url.setHeat}
+                  onChangeHeatSettings={setHeatSettings}
+                />
+              ) : null}
+              {recordPeeked && state.view === 'map' ? (
+                <RecordPeekBar recordId={state.record!} onOpen={() => setPeekRecord(null)} onClose={url.closePanel} />
+              ) : null}
               {state.view === 'table' ? (
                 workingLayer ? (
                   <RecordsTable
@@ -356,7 +382,7 @@ function MapWorkspaceInner() {
                     onPageSizeChange={url.setPageSize}
                     onSortChange={url.setSort}
                     onOpenRecord={onOpenRecord}
-                    onOpenRole={url.openRole}
+                    onOpenRole={openRole}
                     onViewOnMap={onViewOnMap}
                   />
                 ) : (
@@ -370,24 +396,25 @@ function MapWorkspaceInner() {
               ) : null}
             </main>
 
-            {filtersOpen && workingLayer ? (
-              <FiltersPanel
-                key={workingLayer.id}
-                layer={workingLayer}
-                filters={state.filters}
-                loc={state.loc}
-                num={state.num}
-                onApply={(filters, loc, num) => {
-                  url.setFilters(filters, loc, num);
-                  setFiltersOpen(false);
-                }}
-                onClose={() => setFiltersOpen(false)}
-              />
-            ) : null}
             {rightPanel}
           </div>
         </div>
       </div>
+
+      {filtersOpen && workingLayer ? (
+        <FiltersPanel
+          key={workingLayer.id}
+          layer={workingLayer}
+          filters={state.filters}
+          loc={state.loc}
+          num={state.num}
+          onApply={(filters, loc, num) => {
+            url.setFilters(filters, loc, num);
+            setFiltersOpen(false);
+          }}
+          onClose={() => setFiltersOpen(false)}
+        />
+      ) : null}
 
       {layerDialog ? (
         <LayerFormDialog
@@ -448,6 +475,51 @@ function MapWorkspaceInner() {
           onRequestPick={onRequestPick}
           onOpenRecord={onOpenRecord}
           onCreated={onCreated}
+        />
+      ) : null}
+
+      {state.record !== null && (!recordPeeked || state.view === 'table') ? (
+        <RecordDialog
+          key={state.record}
+          recordId={state.record}
+          workingLayerId={state.layer}
+          onClose={url.closePanel}
+          back={back?.kind === 'role' ? onBack : null}
+          onOpenRole={(roleId) => {
+            const from = state.record;
+            openRole(roleId);
+            if (from !== null) setBack({ kind: 'record', id: from });
+          }}
+          onOpenRecord={onOpenRecord}
+          onWorkInLayer={onWorkInLayer}
+          onViewOnMap={(lat, lon) => {
+            setPeekRecord(state.record);
+            if (state.view === 'table') url.setView('map');
+            controller.flyTo({ lat, lon, zoom: 18 });
+          }}
+        />
+      ) : null}
+
+      {state.role !== null ? (
+        <RoleDialog
+          key={state.role}
+          roleId={state.role}
+          workingLayerId={state.layer}
+          back={back && !(back.kind === 'role' && back.id === state.role) ? onBack : null}
+          onClose={url.closePanel}
+          onOpenRole={(roleId) => {
+            const from = state.role!;
+            openRole(roleId);
+            setBack({ kind: 'role', id: from });
+          }}
+          onOpenRecord={onOpenRecordFromRole}
+          onViewOnMap={(lat, lon) => {
+            const roleId = state.role!;
+            url.closePanel();
+            if (state.view === 'table') url.setView('map');
+            controller.flyTo({ lat, lon, zoom: 18 });
+            setTempMarker({ lat, lon, label: `Rol ${roleId}`, at: Date.now() });
+          }}
         />
       ) : null}
 

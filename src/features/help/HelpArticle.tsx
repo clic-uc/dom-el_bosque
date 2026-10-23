@@ -17,7 +17,7 @@ export function HelpArticle({
     <article className={cn('mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 lg:py-10', className)}>
       <header className="mb-6 border-b pb-6">
         {eyebrow ? (
-          <p className="mb-2 text-sm font-semibold tracking-wide text-secondary-strong uppercase">
+          <p className="mb-2 text-base font-medium text-muted-foreground">
             {eyebrow}
           </p>
         ) : null}

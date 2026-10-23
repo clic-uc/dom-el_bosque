@@ -32,7 +32,7 @@ export function HelpIndex({ pages }: { pages: HelpNavItem[] }) {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 lg:py-10">
       <header className="mb-8">
-        <p className="mb-2 text-sm font-semibold tracking-wide text-secondary-strong uppercase">
+        <p className="mb-2 text-base font-medium text-muted-foreground">
           Georreferenciación DOM
         </p>
         <h1 className="text-3xl leading-tight font-semibold text-primary-dark sm:text-4xl">Manual de uso</h1>

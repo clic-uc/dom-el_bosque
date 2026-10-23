@@ -61,7 +61,7 @@ export function Toolbar({
         <TooltipContent>Departamentos y capas</TooltipContent>
       </Tooltip>
 
-      <RecordSearch workingLayer={workingLayer} value={query} view={view} onQueryChange={onQueryChange} onSelectRecord={onSelectRecord} onSelectRole={onSelectRole} onGoToAddress={onGoToAddress} className="flex-1" />
+      <RecordSearch workingLayer={workingLayer} value={query} view={view} onQueryChange={onQueryChange} onSelectRecord={onSelectRecord} onSelectRole={onSelectRole} onGoToAddress={onGoToAddress} className="min-w-56 flex-1" />
 
       <Button variant={filtersOpen || activeFilters > 0 ? 'secondary' : 'outline'} size="lg" className="h-11 gap-2" onClick={onToggleFilters} disabled={!workingLayer} aria-pressed={filtersOpen} aria-label={activeFilters ? `Filtros (${activeFilters} activos)` : 'Filtros'}>
         <Filter aria-hidden />
@@ -76,12 +76,12 @@ export function Toolbar({
       <div className="ml-auto flex items-center gap-2">
         {can('imports.write') ? (
           <Button variant="outline" size="lg" className="h-11 gap-2" onClick={onImport} disabled={!workingLayer} title={workingLayer ? `Importar registros a ${workingLayer.name}` : 'Elige una capa de trabajo'}>
-            <Upload aria-hidden /> <span className="hidden xl:inline">Importar</span>
+            <Upload aria-hidden /> <span className="hidden 2xl:inline">Importar</span>
           </Button>
         ) : null}
         {can('export') ? (
           <Button variant="outline" size="lg" className="h-11 gap-2" onClick={onExport}>
-            <Download aria-hidden /> <span className="hidden xl:inline">Exportar</span>
+            <Download aria-hidden /> <span className="hidden 2xl:inline">Exportar</span>
           </Button>
         ) : null}
         {can('records.write') ? (
@@ -89,12 +89,12 @@ export function Toolbar({
             <Plus aria-hidden /> Crear registro
           </Button>
         ) : null}
-        <div className="flex rounded-md border" role="group" aria-label="Vista">
+        <div className="flex rounded-md border" role="group" aria-label="Ver los registros en el mapa o en la tabla">
           <Button variant={view === 'map' ? 'secondary' : 'ghost'} size="lg" className="h-11 gap-2 rounded-r-none" onClick={() => onViewChange('map')} aria-pressed={view === 'map'}>
-            <MapIcon aria-hidden /> <span className="hidden md:inline">Ver en mapa</span>
+            <MapIcon aria-hidden /> <span className="hidden md:inline">Mapa</span>
           </Button>
           <Button variant={view === 'table' ? 'secondary' : 'ghost'} size="lg" className="h-11 gap-2 rounded-l-none border-l" onClick={() => onViewChange('table')} aria-pressed={view === 'table'}>
-            <Table2 aria-hidden /> <span className="hidden md:inline">Ver en tabla</span>
+            <Table2 aria-hidden /> <span className="hidden md:inline">Tabla</span>
           </Button>
         </div>
         <UserMenu />

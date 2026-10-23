@@ -73,10 +73,10 @@ describe('FiltersPanel', () => {
     expect(onApply).toHaveBeenCalledWith({ estado: ['Aprobado', ''], direccion: ['Av.'] }, 'approx', 'without');
   });
 
-  it('"Limpiar" aplica el estado vacío', async () => {
+  it('"Quitar todos los filtros" aplica el estado vacío', async () => {
     const { onApply } = setup({ filters: { estado: ['Aprobado'] }, loc: 'none' });
     expect(await screen.findByLabelText('Aprobado')).toBeChecked();
-    fireEvent.click(screen.getByRole('button', { name: 'Limpiar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar todos los filtros' }));
     expect(onApply).toHaveBeenCalledWith({}, null, null);
   });
 });
