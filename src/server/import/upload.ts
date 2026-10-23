@@ -9,13 +9,14 @@ import type { ImportSourcePatch } from '@/shared/schemas/imports';
 import { MAPPING_TARGETS } from '@/shared/schemas/imports';
 import { capabilities } from '@/shared/capabilities';
 import { normalizeText, toFieldKey } from '@/shared/text';
-import type { ImportSource } from '@/shared/types';
+import type { ImportFileType, ImportSource } from '@/shared/types';
 import type { Actor } from '../auth/session';
 import { ConflictError, ValidationError } from '../errors';
 import { requireLayer, type LayerRow } from '../services/_shared';
 import { cleanupWithoutWorker } from '../jobs/inline';
 import { storage } from '../storage';
 import { assertOwnImport, requireImport } from './service';
+import { KML_NAME_HEADER } from './parse-kml';
 import { importFileKey, parseImportBuffer, readImportTable, type ImportRow } from './source';
 import type { ParsedTable } from './table';
 
@@ -77,10 +78,27 @@ export function buildSuggestedMapping(
   return mapping;
 }
 
+const isGoogleEarth = (fileType: string) => fileType === 'kml' || fileType === 'kmz';
+
+/**
+ * KML/KMZ: si ningún campo se llama como la columna "Nombre" y la capa tiene un único campo de texto (sin contar la
+ * dirección), se sugiere ese (p. ej. el nombre de cada paradero). El usuario lo ve y lo puede cambiar en el mapeo.
+ */
+function suggestKmlName(
+  mapping: Record<string, string | null>,
+  layer: Pick<LayerRow, 'fields' | 'addressFieldKey'>,
+): Record<string, string | null> {
+  if (mapping[KML_NAME_HEADER] !== null) return mapping;
+  const used = new Set(Object.values(mapping));
+  const text = layer.fields.filter((f) => f.type === 'string' && f.key !== layer.addressFieldKey);
+  if (text.length !== 1 || used.has(text[0]!.key)) return mapping;
+  return { ...mapping, [KML_NAME_HEADER]: text[0]!.key };
+}
+
 function toImportSource(imp: ImportRow, table: ParsedTable, layer: LayerRow): ImportSource {
   return {
     importId: imp.id,
-    fileType: imp.fileType as 'csv' | 'xlsx',
+    fileType: imp.fileType as ImportFileType,
     sheets: table.sheets,
     sheetName: imp.sheetName,
     headerRow: imp.headerRow,
@@ -88,7 +106,10 @@ function toImportSource(imp: ImportRow, table: ParsedTable, layer: LayerRow): Im
     headers: table.headers,
     totalRows: table.totalRows,
     preview: table.rows.slice(0, 20),
-    suggestedMapping: buildSuggestedMapping(table.headers, layer),
+    skippedFeatures: table.skippedFeatures,
+    suggestedMapping: isGoogleEarth(imp.fileType)
+      ? suggestKmlName(buildSuggestedMapping(table.headers, layer), layer)
+      : buildSuggestedMapping(table.headers, layer),
     layer: {
       id: layer.id,
       name: layer.name,
@@ -100,16 +121,18 @@ function toImportSource(imp: ImportRow, table: ParsedTable, layer: LayerRow): Im
   };
 }
 
-function fileTypeOf(name: string): 'csv' | 'xlsx' {
+function fileTypeOf(name: string): ImportFileType {
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
   if (ext === 'csv' || ext === 'txt') return 'csv';
-  if (ext === 'xlsx') return 'xlsx';
+  if (ext === 'xlsx' || ext === 'kml' || ext === 'kmz') return ext;
   if (ext === 'xls') {
     throw new ValidationError(
       'Los archivos .xls (Excel antiguo) no se aceptan. Ábrelo en Excel y guárdalo como .xlsx.',
     );
   }
-  throw new ValidationError('Solo se aceptan archivos .csv o .xlsx (Excel).');
+  throw new ValidationError(
+    'Solo se aceptan planillas .csv o .xlsx (Excel) y archivos .kml o .kmz (Google Earth).',
+  );
 }
 
 /** Tope efectivo, el del despliegue (staging) o el configurado en el servidor, y su mensaje. */
@@ -195,6 +218,9 @@ export async function patchImportSource(
 ): Promise<ImportSource> {
   const imp = await requireImport(db, id);
   assertOwnImport(actor, imp);
+  if (isGoogleEarth(imp.fileType)) {
+    throw new ValidationError('Los archivos de Google Earth no tienen hojas ni encabezados que elegir.');
+  }
   if (imp.status !== 'UPLOADED') {
     throw new ConflictError(
       'Esta importación ya fue analizada. Para cambiar la hoja o los encabezados, descártala y vuelve a subir el archivo.',

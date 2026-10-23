@@ -162,9 +162,12 @@ export type ImportRow = InferSelectModel<typeof s.imports>;
 /** Sin `fileKey`: la clave interna de la planilla no sale del servidor. */
 export type ImportItem = Jsonified<Omit<ImportRow, 'fileKey'>> & { layerName?: string };
 
+/** `kml` / `kmz`: archivos de Google Earth (cada punto es una fila). */
+export type ImportFileType = 'csv' | 'xlsx' | 'kml' | 'kmz';
+
 export type ImportSource = {
   importId: string;
-  fileType: 'csv' | 'xlsx';
+  fileType: ImportFileType;
   sheets?: string[];
   sheetName?: string | null;
   headerRow: number;
@@ -173,6 +176,8 @@ export type ImportSource = {
   totalRows: number;
   /** 20 filas de vista previa con su número real de planilla. */
   preview: { rowNumber: number; values: Record<string, string> }[];
+  /** Solo KML/KMZ: marcadores que no son un punto (áreas, líneas) y no se importan. */
+  skippedFeatures?: number;
   /** Mapeo sugerido por nombre (§10.2 paso 2). */
   suggestedMapping: Record<string, string | null>;
   layer: Pick<Layer, 'id' | 'name' | 'hasRole' | 'fields' | 'uniqueKeys' | 'addressFieldKey'>;

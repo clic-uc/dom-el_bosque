@@ -28,13 +28,13 @@ export const POST = withActor(
       form = await req.formData();
     } catch {
       throw new ValidationError(
-        'El envío no trae un archivo. Elige un archivo .csv o .xlsx e intenta de nuevo.',
+        'El envío no trae un archivo. Elige un archivo .csv, .xlsx, .kml o .kmz e intenta de nuevo.',
       );
     }
     const fields = importUploadFieldsSchema.safeParse({ layerId: form.get('layerId') });
     if (!fields.success) throw zodToValidationError(fields.error);
     const file = form.get('file');
-    if (!(file instanceof File)) throw new ValidationError('Adjunta un archivo .csv o .xlsx.');
+    if (!(file instanceof File)) throw new ValidationError('Adjunta un archivo .csv, .xlsx, .kml o .kmz.');
     const source = await uploadImport(db, actor, fields.data.layerId, file);
     return created(source);
   },

@@ -1,6 +1,6 @@
 'use client';
 
-import { FileSpreadsheet, Loader2, UploadCloud } from 'lucide-react';
+import { FileSpreadsheet, Loader2, MapPin, UploadCloud } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,8 @@ import type { ImportSource } from '@/shared/types';
 import { usePatchSource, useUploadImport } from './hooks';
 
 const MAX_MB = capabilities.importMaxMb ?? DEFAULT_IMPORT_MAX_MB;
-const ACCEPT = '.csv,.xlsx';
+const EXTENSIONS = ['csv', 'xlsx', 'kml', 'kmz'];
+const ACCEPT = EXTENSIONS.map((e) => `.${e}`).join(',');
 
 const delimiterOptions = [
   { value: 'auto', label: 'Detectar automáticamente' },
@@ -45,14 +46,14 @@ export function UploadStep({ layerId, source, onSource, onNext }: Props) {
   function pick(file: File | undefined) {
     if (!file) return;
     const ext = file.name.split('.').pop()?.toLowerCase();
-    if (ext !== 'csv' && ext !== 'xlsx') {
+    if (!ext || !EXTENSIONS.includes(ext)) {
       setFileError(
-        `"${file.name}" no es un archivo .csv ni .xlsx. Si es Excel antiguo (.xls), guárdalo como .xlsx.`,
+        `"${file.name}" no es un archivo .csv, .xlsx, .kml ni .kmz. Si es Excel antiguo (.xls), guárdalo como .xlsx.`,
       );
       return;
     }
     if (file.size > MAX_MB * 1024 * 1024) {
-      setFileError(`"${file.name}" pesa más de ${MAX_MB} MB. Divide la planilla en partes más pequeñas.`);
+      setFileError(`"${file.name}" pesa más de ${MAX_MB} MB. Divide el archivo en partes más pequeñas.`);
       return;
     }
     setFileError(null);
@@ -72,17 +73,22 @@ export function UploadStep({ layerId, source, onSource, onNext }: Props) {
     });
   }
 
+  // Google Earth: cada punto es una fila y no hay hojas, encabezados ni separador que elegir.
+  const googleEarth = source?.fileType === 'kml' || source?.fileType === 'kmz';
+  const skipped = source?.skippedFeatures ?? 0;
+
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">Elige el archivo con los registros</h3>
           <p className="text-base text-muted-foreground">
-            Se aceptan planillas Excel (.xlsx) o CSV de hasta {MAX_MB} MB
+            Se aceptan planillas Excel (.xlsx) o CSV con una fila de encabezados, y archivos de Google Earth
+            (.kml o .kmz), de hasta {MAX_MB} MB
             {capabilities.importMaxRows
               ? ` y ${capabilities.importMaxRows.toLocaleString('es-CL')} filas`
               : ''}
-            , con una fila de encabezados.
+            .
           </p>
           {capabilities.notices.importLimits ? (
             <p className="mt-1 text-sm text-amber-900">{capabilities.notices.importLimits}</p>
@@ -112,7 +118,11 @@ export function UploadStep({ layerId, source, onSource, onNext }: Props) {
         {upload.isPending ? (
           <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
         ) : source ? (
-          <FileSpreadsheet className="size-8 text-primary" aria-hidden />
+          googleEarth ? (
+            <MapPin className="size-8 text-primary" aria-hidden />
+          ) : (
+            <FileSpreadsheet className="size-8 text-primary" aria-hidden />
+          )
         ) : (
           <UploadCloud className="size-8 text-muted-foreground" aria-hidden />
         )}
@@ -153,6 +163,21 @@ export function UploadStep({ layerId, source, onSource, onNext }: Props) {
       {source ? (
         <>
           <div className="grid gap-4 md:grid-cols-3">
+            {googleEarth ? (
+              <div className="space-y-1 text-base md:col-span-3">
+                <p>
+                  Cada punto del archivo de Google Earth es una fila, en el mismo orden en que aparece allí.
+                  Se leen su nombre, su descripción, su ubicación y los datos adicionales que tenga.
+                </p>
+                {skipped > 0 ? (
+                  <p className="text-amber-900">
+                    {skipped === 1
+                      ? 'Un elemento del archivo no es un punto (por ejemplo, un área o una línea) y no se importará.'
+                      : `${skipped.toLocaleString('es-CL')} elementos del archivo no son puntos (por ejemplo, áreas o líneas) y no se importarán.`}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {source.fileType === 'xlsx' && source.sheets && source.sheets.length > 1 ? (
               <div className="space-y-1.5">
                 <Label htmlFor={`${id}-sheet`} className="text-base">
@@ -176,30 +201,32 @@ export function UploadStep({ layerId, source, onSource, onNext }: Props) {
                 </Select>
               </div>
             ) : null}
-            <div className="space-y-1.5">
-              <Label htmlFor={`${id}-header`} className="text-base">
-                Fila con los nombres de las columnas
-              </Label>
-              <Input
-                id={`${id}-header`}
-                type="number"
-                min={1}
-                className="h-11 text-base"
-                defaultValue={source.headerRow}
-                key={`${source.importId}-${source.sheetName}-${source.headerRow}`}
-                disabled={patch.isPending}
-                onBlur={(e) => {
-                  const n = Number(e.target.value);
-                  if (Number.isInteger(n) && n >= 1 && n !== source.headerRow) change({ headerRow: n });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                }}
-              />
-              <p className="text-sm text-muted-foreground">
-                Cámbiala si la planilla tiene títulos sobre los encabezados.
-              </p>
-            </div>
+            {googleEarth ? null : (
+              <div className="space-y-1.5">
+                <Label htmlFor={`${id}-header`} className="text-base">
+                  Fila con los nombres de las columnas
+                </Label>
+                <Input
+                  id={`${id}-header`}
+                  type="number"
+                  min={1}
+                  className="h-11 text-base"
+                  defaultValue={source.headerRow}
+                  key={`${source.importId}-${source.sheetName}-${source.headerRow}`}
+                  disabled={patch.isPending}
+                  onBlur={(e) => {
+                    const n = Number(e.target.value);
+                    if (Number.isInteger(n) && n >= 1 && n !== source.headerRow) change({ headerRow: n });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                  }}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Cámbiala si la planilla tiene títulos sobre los encabezados.
+                </p>
+              </div>
+            )}
             {source.fileType === 'csv' ? (
               <div className="space-y-1.5">
                 <Label htmlFor={`${id}-delim`} className="text-base">
@@ -258,7 +285,7 @@ export function UploadStep({ layerId, source, onSource, onNext }: Props) {
           <p className="text-sm text-muted-foreground" aria-live="polite">
             {patch.isPending
               ? 'Volviendo a leer el archivo…'
-              : `Vista previa de las primeras ${Math.min(20, source.preview.length)} filas. El archivo tiene ${source.totalRows.toLocaleString('es-CL')} filas con datos.`}
+              : `Vista previa de las primeras ${Math.min(20, source.preview.length)} filas. El archivo tiene ${source.totalRows.toLocaleString('es-CL')} ${googleEarth ? 'puntos' : 'filas con datos'}.`}
           </p>
         </>
       ) : null}
