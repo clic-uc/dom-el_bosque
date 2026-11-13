@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { ErrorState, LoadingState } from '@/components/shared/states';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { errorMessage } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { ImportSource, ImportStatusFull } from '@/shared/types';
 import { useImportStatus } from './hooks';
@@ -75,6 +76,19 @@ function WizardBody({ layerId, importId, onOpenChange, onCompleted }: BodyProps)
   const source = uploaded ?? status?.source ?? null;
   const effectiveStep = resolveStep(step, status, options !== undefined);
 
+  /** La capa cambió (se editó desde el paso 2): se vuelve a leer con la vista previa y el mapeo sugerido. */
+  async function reloadSource() {
+    if (!currentId) return;
+    try {
+      const fresh = await api<ImportStatusFull>(`/api/imports/${currentId}`, { query: { source: '1' } });
+      if (fresh.source) setUploaded(fresh.source);
+    } catch (err) {
+      toast.error(
+        errorMessage(err, 'La capa se guardó, pero no pudimos actualizar esta pantalla. Cierra y vuelve a abrir la importación.'),
+      );
+    }
+  }
+
   const title = source?.layer.name ?? status?.layerName ?? status?.layer.name;
   const current = STEPS[effectiveStep - 1]!;
 
@@ -105,8 +119,11 @@ function WizardBody({ layerId, importId, onOpenChange, onCompleted }: BodyProps)
         {effectiveStep === 2 ? (
           source ? (
             <MappingStep
+              // Si se edita la capa, el mapeo se rehace con su nueva configuración (Rol, campos).
+              key={`${source.layer.hasRole}:${source.layer.fields.map((f) => f.key).join(',')}`}
               source={source}
               initial={options}
+              onLayerChanged={reloadSource}
               onBack={() => setStep(1)}
               onAnalyzing={(o) => {
                 setOptions(o);

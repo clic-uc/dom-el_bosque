@@ -101,6 +101,17 @@ describe('validateMapping (§8.5 "Analizar" paso 1)', () => {
     ).not.toThrow();
   });
 
+  it('capa sin rol: coordenadas y comentarios bastan como "al menos una columna"', () => {
+    const noRole = { ...layer, hasRole: false, fields: [], uniqueKeys: [], addressFieldKey: null };
+    expect(() =>
+      validateMapping(noRole, { ...base, columnMapping: { A: 'lat', B: 'lon', C: 'comments' } }),
+    ).not.toThrow();
+    expect(() => validateMapping(noRole, { ...base, columnMapping: { A: 'comments' } })).not.toThrow();
+    expect(() => validateMapping(noRole, { ...base, columnMapping: { A: null } })).toThrow(
+      /al menos una columna/,
+    );
+  });
+
   it('rechaza columnas que no existen en el archivo', () => {
     expect(() =>
       validateMapping(layer, { ...base, columnMapping: { A: 'roleId', B: 'n_permiso' } }, ['A']),
