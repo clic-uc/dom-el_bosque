@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "clic": {
+      "type": "http",
+      "url": "https://clicuc.vercel.app/api/mcp"
+    }
+  }
+}
