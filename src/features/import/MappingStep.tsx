@@ -16,6 +16,7 @@ import { capabilities } from '@/shared/capabilities';
 import type { AnalyzeImportInput } from '@/shared/schemas/imports';
 import type { ImportSource } from '@/shared/types';
 import { useAnalyzeImport } from './hooks';
+import { EditLayerOffer } from './EditLayerOffer';
 import { IGNORE, MAPPING_SPECIAL, targetLabel } from './labels';
 
 export type MappingOptions = {
@@ -40,6 +41,14 @@ export function defaultOptions(source: ImportSource): MappingOptions {
   };
 }
 
+/** La capa usa Rol SII y el mapeo no trae ni el Rol ni la dirección con que ubicarlo. */
+function needsRoleMapping(source: ImportSource, o: MappingOptions): boolean {
+  const layer = source.layer;
+  if (!layer.hasRole) return false;
+  const targets = new Set(Object.values(o.mapping));
+  return !targets.has('roleId') && !(layer.addressFieldKey && targets.has(layer.addressFieldKey));
+}
+
 /** Errores del mapeo (misma regla que el servidor, §8.5 paso 1) para mostrarlos en línea antes de analizar. */
 export function mappingErrors(
   source: ImportSource,
@@ -61,7 +70,7 @@ export function mappingErrors(
     }
   }
   const mapped = (t: string) => byTarget.has(t);
-  if (layer.hasRole && !mapped('roleId') && !(layer.addressFieldKey && mapped(layer.addressFieldKey))) {
+  if (needsRoleMapping(source, o)) {
     const addr = layer.addressFieldKey
       ? layer.fields.find((f) => f.key === layer.addressFieldKey)
       : undefined;
@@ -72,10 +81,8 @@ export function mappingErrors(
   }
   if (mapped('lat') !== mapped('lon'))
     general.push('Latitud y longitud van juntas: mapea las dos columnas o ninguna.');
-  if (!layer.hasRole || !mapped('roleId')) {
-    if (layer.fields.every((f) => !mapped(f.key)))
-      general.push('Mapea al menos una columna a un campo de la capa.');
-  }
+  // Cuenta cualquier destino: campos, Rol, coordenadas o comentarios (importar solo coordenadas es válido).
+  if (byTarget.size === 0) general.push('Mapea al menos una columna a un campo de la capa.');
   const from = o.rowFrom ? Number(o.rowFrom) : null;
   const to = o.rowTo ? Number(o.rowTo) : null;
   if (from !== null && (!Number.isInteger(from) || from < 1))
@@ -99,10 +106,12 @@ type Props = {
   initial?: MappingOptions;
   onBack: () => void;
   onAnalyzing: (options: MappingOptions) => void;
+  /** Se editó la capa desde este paso: el asistente debe volver a leerla. */
+  onLayerChanged?: () => void;
 };
 
 /** Paso 2 — Columnas y opciones (§10.2). */
-export function MappingStep({ source, initial, onBack, onAnalyzing }: Props) {
+export function MappingStep({ source, initial, onBack, onAnalyzing, onLayerChanged }: Props) {
   const id = useId();
   const layer = source.layer;
   const [o, setO] = useState<MappingOptions>(() => initial ?? defaultOptions(source));
@@ -112,6 +121,7 @@ export function MappingStep({ source, initial, onBack, onAnalyzing }: Props) {
   const canAnalyze =
     errors.general.length === 0 && Object.keys(errors.byHeader).length === 0 && !analyze.isPending;
   const detectsDuplicates = layer.uniqueKeys.length > 0;
+  const offerLayerEdit = needsRoleMapping(source, o);
 
   const targets = useMemo(() => {
     const list: { value: string; label: string }[] = [];
@@ -380,14 +390,17 @@ export function MappingStep({ source, initial, onBack, onAnalyzing }: Props) {
       </div>
 
       {errors.general.length ? (
-        <ul
+        <div
           role="alert"
-          className="space-y-1 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-base text-destructive"
+          className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-base text-destructive"
         >
-          {errors.general.map((e) => (
-            <li key={e}>{e}</li>
-          ))}
-        </ul>
+          <ul className="space-y-1">
+            {errors.general.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+          {offerLayerEdit && onLayerChanged ? <EditLayerOffer layerId={layer.id} onChanged={onLayerChanged} /> : null}
+        </div>
       ) : null}
       {analyze.error ? (
         <p role="alert" className="text-base text-destructive">

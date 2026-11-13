@@ -142,7 +142,8 @@ export function validateMapping(
     );
   }
 
-  if (mapping.fields.length === 0 && !mapping.roleHeader) {
+  // Importar solo coordenadas o comentarios también es válido.
+  if (mapping.fields.length === 0 && !mapping.roleHeader && !mapping.latHeader && !mapping.commentsHeader) {
     throw new ValidationError('Mapea al menos una columna del archivo a un campo de la capa.');
   }
 

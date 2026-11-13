@@ -2,13 +2,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import type { ImportSource, ImportStatusFull } from '@/shared/types';
+import { ActorProvider } from '@/features/auth/actor-context';
+import type { CurrentUser, ImportSource, ImportStatusFull } from '@/shared/types';
 import { MappingStep, defaultOptions, mappingErrors } from './MappingStep';
 import { ResultStep } from './ResultStep';
 import { summaryText } from './ReviewStep';
 import { UploadStep } from './UploadStep';
 
 const fetchMock = vi.fn();
+const actor: CurrentUser = { id: 'u1', name: 'Editora', email: 'editora@elbosque.cl', role: 'editor', mustChangePassword: false };
 
 beforeAll(() => {
   vi.stubGlobal(
@@ -34,7 +36,9 @@ function wrap(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <TooltipProvider>{ui}</TooltipProvider>
+      <TooltipProvider>
+        <ActorProvider actor={actor}>{ui}</ActorProvider>
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
@@ -105,6 +109,24 @@ describe('MappingStep (§10.2 paso 2)', () => {
       rowFrom: null,
       rowTo: null,
     });
+  });
+
+  it('ofrece editar la capa cuando exige Rol SII y no se mapeó, sin pedir datos hasta que se pulsa', () => {
+    wrap(<MappingStep source={source} onBack={() => {}} onAnalyzing={() => {}} onLayerChanged={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Editar la capa' })).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('en una capa sin Rol, coordenadas y comentarios cuentan como columnas mapeadas', () => {
+    const noRole: ImportSource = {
+      ...source,
+      layer: { ...source.layer, hasRole: false, fields: [], uniqueKeys: [], addressFieldKey: null },
+    };
+    const o = { ...defaultOptions(noRole), mapping: { Permiso: 'lat', Calle: 'lon', Comentario: 'comments' } };
+    expect(mappingErrors(noRole, o).general).toEqual([]);
+    wrap(<MappingStep source={noRole} initial={o} onBack={() => {}} onAnalyzing={() => {}} onLayerChanged={() => {}} />);
+    expect(screen.queryByRole('button', { name: 'Editar la capa' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Analizar' })).toBeEnabled();
   });
 
   it('mappingErrors detecta destinos repetidos y lat/lon incompletos', () => {
